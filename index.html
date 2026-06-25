@@ -1,0 +1,2738 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Buddy - ระบบผู้ช่วยครูอัจฉริยะ</title>
+
+    <!-- LINE LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            deep: '#1E40AF',
+                            sky:  '#3B82F6',
+                            emerald: '#10B981',
+                            line: '#06C755',
+                            bg:   '#F8FAFC'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Sarabun', 'sans-serif'],
+                        title: ['Mitr', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts: Sarabun + Mitr -->
+    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- html2pdf.js สำหรับแปลง ปพ.5 เป็น PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
+        h1, h2, h3, h4, .font-title { font-family: 'Mitr', sans-serif; }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+        /* Spinner */
+        .spinner {
+            border: 3px solid #e2e8f0;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            width: 28px; height: 28px;
+            animation: spin 0.7s linear infinite;
+            margin: auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ==================== ปพ.5 PRINT STYLES ==================== */
+        /* หน้าจอ: แสดง preview ขนาดเล็ก */
+        #printable-report-area {
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        /* ตอนพิมพ์จริง: ซ่อนส่วนที่ไม่ต้องการ และ expand เอกสาร */
+        @media print {
+            body > * { display: none !important; }
+            #print-modal-overlay { display: block !important; position: fixed !important;
+                inset: 0 !important; background: white !important; z-index: 9999 !important; }
+            #pp5-print-document {
+                display: block !important;
+                width: 100% !important;
+                max-width: none !important;
+                padding: 20mm 15mm !important;
+                font-size: 12pt !important;
+                line-height: 1.6 !important;
+                color: black !important;
+            }
+            #pp5-print-document table {
+                border-collapse: collapse !important;
+                width: 100% !important;
+                font-size: 10pt !important;
+            }
+            #pp5-print-document th,
+            #pp5-print-document td {
+                border: 1px solid #000 !important;
+                padding: 5px 8px !important;
+            }
+            #pp5-print-document th {
+                background-color: #f0f0f0 !important;
+                font-weight: bold !important;
+            }
+            #pp5-print-document .print-header {
+                text-align: center !important;
+                margin-bottom: 16px !important;
+                border-bottom: 2px solid black !important;
+                padding-bottom: 10px !important;
+            }
+            #pp5-print-document .print-footer {
+                margin-top: 20px !important;
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 20px !important;
+            }
+            #pp5-print-document .signature-line {
+                border-top: 1px solid #333 !important;
+                margin-top: 40px !important;
+                padding-top: 6px !important;
+                text-align: center !important;
+            }
+            @page {
+                size: A4 portrait;
+                margin: 10mm 15mm;
+            }
+        }
+        /* ==================== Answer Sheet Print ==================== */
+        @media print {
+            #answer-sheet-print-overlay {
+                display: block !important;
+                position: fixed !important;
+                inset: 0 !important;
+                background: white !important;
+                z-index: 10000 !important;
+                overflow: visible !important;
+            }
+            #answer-sheet-print-overlay .sheet-page {
+                page-break-after: always;
+                padding: 14mm 12mm;
+            }
+            #answer-sheet-print-overlay .sheet-page:last-child {
+                page-break-after: avoid;
+            }
+        }
+    </style>
+</head>
+<body class="flex justify-center items-center min-h-screen">
+
+<!-- ==================== PRINT OVERLAY (ใช้ @media print) ==================== -->
+<div id="print-modal-overlay" style="display:none;">
+    <div id="pp5-print-document"></div>
+</div>
+
+<!-- ==================== ANSWER SHEET PRINT OVERLAY ==================== -->
+<div id="answer-sheet-print-overlay" style="display:none;"></div>
+
+<!-- ==================== MOBILE FRAME ==================== -->
+<div class="w-full max-w-md bg-white min-h-screen md:min-h-[850px] md:my-8 md:rounded-[36px] md:shadow-2xl overflow-hidden flex flex-col relative border border-slate-200">
+
+    <!-- ==================== VIEW: LOGIN ==================== -->
+    <div id="view-login" class="flex flex-col justify-between items-center px-6 py-12 min-h-screen bg-gradient-to-b from-blue-50 to-white">
+
+        <!-- Top notice -->
+        <div class="w-full mt-4">
+            <div class="bg-blue-50 border border-blue-200 text-blue-800 rounded-2xl p-4 text-xs flex items-start gap-2.5 text-left shadow-sm">
+                <span class="text-lg flex-shrink-0">📢</span>
+                <div>
+                    <p class="font-bold">ระบบใช้ LINE Login เพื่อยืนยันตัวตน</p>
+                    <p class="mt-0.5 opacity-90 leading-relaxed">ข้อมูลโปรไฟล์ชื่อและรูปภาพจะถูกดึงมาจาก LINE โดยอัตโนมัติ และบันทึกลง Google Sheets อย่างปลอดภัย</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logo -->
+        <div class="flex flex-col items-center">
+            <div class="w-28 h-28 bg-brand-deep rounded-full flex items-center justify-center text-5xl shadow-xl mb-6 relative" style="animation: bounceIn 0.6s ease-out;">
+                🐙
+                <div class="absolute -right-1 -bottom-1 bg-brand-emerald text-white text-xs px-2.5 py-1 rounded-full font-bold border-2 border-white shadow">v2.1</div>
+            </div>
+            <h1 class="text-3xl font-bold text-brand-deep tracking-wide font-title">Teacher Buddy</h1>
+            <p class="text-slate-500 text-sm mt-2 text-center">ผู้ช่วยอัจฉริยะจัดระบบงานของครูไทย</p>
+        </div>
+
+        <!-- Login section -->
+        <div class="w-full flex flex-col items-center gap-4 px-2 mb-8">
+
+            <!-- Loading State (แสดงระหว่าง LIFF init) -->
+            <div id="login-loading" class="w-full flex flex-col items-center gap-3 py-6">
+                <div class="spinner"></div>
+                <p class="text-xs text-slate-400" id="login-loading-text">กำลังเชื่อมต่อ LINE...</p>
+            </div>
+
+            <!-- ปุ่ม LINE Login (แสดงหลัง LIFF init สำเร็จ แต่ยังไม่ได้ login) -->
+            <div id="login-btn-area" class="hidden w-full flex flex-col items-center gap-3">
+                <button onclick="loginWithLINE()" id="btn-line-login"
+                    class="w-full bg-[#06C755] hover:bg-[#05b34c] active:scale-95 text-white font-bold py-4 px-6 rounded-full flex items-center justify-center gap-3 shadow-xl transition-all">
+                    <!-- LINE SVG Icon -->
+                    <svg class="w-7 h-7 fill-current flex-shrink-0" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M24 10.304c0-5.369-5.383-9.738-12-9.738s-12 4.369-12 9.738c0 4.814 4.269 8.846 10.036 9.586.391.084.922.258 1.057.592.12.301.079.771.038 1.077l-.164 1.037c-.049.317-.234 1.246 1.011.679 1.245-.567 6.721-3.958 9.16-6.774 2.17-2.499 2.862-4.664 2.862-6.197zm-15.695 2.115h-1.638l-.001-4.041c0-.188-.152-.341-.341-.341s-.341.153-.341.341v4.382c0 .188.152.341.341.341h1.979c.188 0 .341-.153.341-.341s-.153-.341-.341-.341zm2.346-4.041c0-.188-.152-.341-.341-.341s-.341.153-.341.341v4.041c0 .188.152.341.341.341s.341-.153.341-.341v-4.041zm4.125 0c-.09-.092-.214-.143-.344-.143-.129 0-.253.051-.343.143l-1.638 1.666v-1.482c0-.188-.152-.341-.341-.341s-.341.153-.341.341v4.041c0 .09.036.177.1.241.064.063.151.099.241.099.129 0 .253-.051.343-.143l1.722-1.751v1.551c0 .188.152.341.341.341s.341-.153.341-.341v-4.041c0-.091-.036-.178-.1-.242zm2.935 2.146h-1.433v-.994h1.433c.188 0 .341-.153.341-.341s-.153-.341-.341-.341h-1.774c-.09 0-.177.036-.241.1-.064.064-.1.151-.1.241v3.359c0 .09.036.177.1.241.064.063.151.1.241.1h1.774c.188 0 .341-.153.341-.341s-.153-.341-.341-.341h-1.433v-1.042h1.433c.188 0 .341-.153.341-.341s-.153-.341-.341-.341z"/>
+                    </svg>
+                    <span class="text-lg">เข้าสู่ระบบด้วย LINE</span>
+                </button>
+                <p class="text-[11px] text-slate-400 text-center leading-relaxed px-4">
+                    ระบบจะขอสิทธิ์อ่านชื่อและรูปโปรไฟล์ LINE ของท่านเท่านั้น<br>ไม่มีการโพสต์หรือส่งข้อความใดๆ
+                </p>
+            </div>
+
+            <!-- Error State -->
+            <div id="login-error-area" class="hidden w-full bg-red-50 border border-red-200 rounded-2xl p-4 text-xs text-red-800 flex flex-col gap-2">
+                <p class="font-bold">⚠️ ไม่สามารถเชื่อมต่อ LINE ได้</p>
+                <p id="login-error-msg" class="leading-relaxed opacity-90">กรุณาตรวจสอบ LIFF ID และลองใหม่อีกครั้ง</p>
+                <p class="text-[10px] text-red-500 font-mono" id="login-liff-id-hint"></p>
+                <button onclick="retryLiffInit()" class="mt-1 bg-red-500 text-white text-xs font-bold px-4 py-2 rounded-lg active:scale-95 self-start">
+                    🔄 ลองใหม่
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ==================== MAIN SHELL ==================== -->
+    <div id="main-shell" class="hidden flex-col flex-1 bg-brand-bg relative pb-20">
+
+        <!-- HEADER -->
+        <header class="bg-brand-deep text-white px-5 py-4 flex items-center justify-between sticky top-0 z-40 shadow-md">
+            <div class="flex items-center gap-3">
+                <!-- Avatar: แสดงรูป LINE Profile หรือ initials ถ้าไม่มีรูป -->
+                <div class="w-11 h-11 rounded-full border-2 border-brand-sky overflow-hidden flex-shrink-0 bg-blue-100" id="user-avatar">
+                    <img id="user-avatar-img" src="" alt="" class="w-full h-full object-cover hidden">
+                    <div id="user-avatar-initials" class="w-full h-full flex items-center justify-center text-brand-deep font-bold text-lg">
+                        <span id="user-avatar-text">ครู</span>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-[11px] opacity-80 leading-none mb-1">สวัสดีครับครู</p>
+                    <p class="text-sm font-bold tracking-wide" id="header-teacher-name">กำลังโหลด...</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <div id="sync-status" class="text-[10px] bg-blue-800 px-2 py-1 rounded-full" title="สถานะซิงค์ข้อมูล">☁️ ซิงค์แล้ว</div>
+                <button onclick="logout()" class="p-2 hover:bg-blue-800 rounded-lg transition-colors text-xl" title="ออกจากระบบ">🚪</button>
+            </div>
+        </header>
+
+        <!-- TOAST NOTIFICATION -->
+        <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs font-semibold px-5 py-3 rounded-full shadow-xl flex items-center gap-2 z-50 transition-all duration-300 translate-y-10 opacity-0 pointer-events-none">
+            <span id="toast-icon">✅</span>
+            <span id="toast-message">บันทึกข้อมูลเรียบร้อยแล้ว</span>
+        </div>
+
+        <!-- VIEWS CONTAINER -->
+        <main class="flex-1 p-4">
+
+            <!-- 1. HOME VIEW -->
+            <div id="view-home" class="view-content flex flex-col gap-5">
+                <!-- Semester Card -->
+                <div onclick="openSemesterModal()" class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 flex justify-between items-center cursor-pointer hover:border-brand-sky transition-all shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🗓️</span>
+                        <div>
+                            <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wide">ภาคเรียนปัจจุบัน</p>
+                            <p class="text-sm font-extrabold text-brand-deep" id="active-semester-text">กำลังโหลด...</p>
+                        </div>
+                    </div>
+                    <span class="text-brand-sky font-bold text-sm">สลับเทอม ▾</span>
+                </div>
+
+                <!-- Onboarding Progress -->
+                <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-title font-bold text-sm text-slate-700">🚀 เริ่มต้นใช้งาน Teacher Buddy</span>
+                        <span class="text-xs font-bold text-brand-sky bg-blue-50 px-2 py-0.5 rounded-full" id="onboarding-progress-text">0 / 5</span>
+                    </div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-3">
+                        <div class="bg-brand-sky h-full transition-all duration-500" id="onboarding-progress-bar" style="width:0%"></div>
+                    </div>
+                    <p class="text-xs text-slate-500 leading-relaxed" id="onboarding-hint">💡 เริ่มต้นด้วยการ: เพิ่มภาคเรียน → เพิ่มรายวิชา → เพิ่มนักเรียน → เช็คชื่อ → พิมพ์ ปพ.5</p>
+                </div>
+
+                <!-- Quick Actions Grid -->
+                <div>
+                    <h3 class="font-title font-bold text-sm text-slate-500 mb-3 px-1 uppercase tracking-wide">ระบบงานสำหรับครู</h3>
+                    <div class="grid grid-cols-4 gap-3">
+                        <button onclick="switchTab('semesters')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-xl">🗓️</div>
+                            <span class="text-[11px] font-medium text-slate-600">ตั้งค่าเทอม</span>
+                        </button>
+                        <button onclick="switchTab('courses')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl">📖</div>
+                            <span class="text-[11px] font-medium text-slate-600">รายวิชา</span>
+                        </button>
+                        <button onclick="switchTab('students')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">👦👧</div>
+                            <span class="text-[11px] font-medium text-slate-600">นักเรียน</span>
+                        </button>
+                        <button onclick="switchTab('attendance')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center text-xl">✏️</div>
+                            <span class="text-[11px] font-medium text-slate-600">เช็คชื่อ</span>
+                        </button>
+                        <button onclick="switchTab('omr')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-xl">📋</div>
+                            <span class="text-[11px] font-medium text-slate-600">คะแนน OMR</span>
+                        </button>
+                        <button onclick="switchTab('reports')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center text-xl">📄</div>
+                            <span class="text-[11px] font-medium text-slate-600">พิมพ์ ปพ.5</span>
+                        </button>
+                        <button onclick="syncToCloud()" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center text-xl">☁️</div>
+                            <span class="text-[11px] font-medium text-slate-600">ซิงค์คลาวด์</span>
+                        </button>
+                        <button onclick="switchTab('settings')" class="flex flex-col items-center gap-2 p-3 bg-white border border-slate-100 rounded-2xl hover:bg-slate-50 active:scale-95 transition-all shadow-sm">
+                            <div class="w-12 h-12 rounded-full bg-slate-50 text-slate-600 flex items-center justify-center text-xl">⚙️</div>
+                            <span class="text-[11px] font-medium text-slate-600">ตั้งค่า</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+                    <h4 class="font-title font-bold text-sm text-slate-700 mb-3">📊 สถิติเทอมปัจจุบัน</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-blue-50/50 p-3 rounded-xl border border-blue-50 text-center">
+                            <p class="text-[10px] text-slate-500 font-medium">รายวิชา</p>
+                            <p class="text-xl font-black text-brand-deep mt-1" id="dash-courses-count">0 วิชา</p>
+                        </div>
+                        <div class="bg-emerald-50/50 p-3 rounded-xl border border-emerald-50 text-center">
+                            <p class="text-[10px] text-slate-500 font-medium">นักเรียนทั้งหมด</p>
+                            <p class="text-xl font-black text-brand-emerald mt-1" id="dash-students-count">0 คน</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. SEMESTERS VIEW -->
+            <div id="view-semesters" class="view-content hidden flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="font-title font-bold text-lg text-slate-800">จัดการภาคเรียน</h2>
+                        <p class="text-xs text-slate-500">สร้างและสลับปีการศึกษา</p>
+                    </div>
+                    <button onclick="toggleElement('add-semester-box')" class="bg-brand-sky text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95">➕ เพิ่มเทอม</button>
+                </div>
+
+                <div id="add-semester-box" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-inner">
+                    <h3 class="font-title text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">เพิ่มภาคเรียนใหม่</h3>
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-500 mb-1">ปีการศึกษา (พ.ศ.)</label>
+                            <input id="new-sem-year" type="number" value="2569" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-500 mb-1">ภาคเรียนที่</label>
+                            <select id="new-sem-term" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                                <option value="1">ภาคเรียนที่ 1</option>
+                                <option value="2">ภาคเรียนที่ 2</option>
+                                <option value="3">ภาคเรียนที่ 3 (ฤดูร้อน)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="toggleElement('add-semester-box')" class="bg-slate-300 text-slate-700 text-xs px-4 py-2 rounded-lg font-bold">ยกเลิก</button>
+                        <button onclick="addNewSemester()" class="bg-brand-deep text-white text-xs px-4 py-2 rounded-lg font-bold">บันทึก</button>
+                    </div>
+                </div>
+
+                <div id="semester-list-container" class="flex flex-col gap-3"></div>
+            </div>
+
+            <!-- 3. COURSES VIEW -->
+            <div id="view-courses" class="view-content hidden flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="font-title font-bold text-lg text-slate-800">รายวิชาทั้งหมด</h2>
+                        <p class="text-xs text-slate-500">จัดการรายวิชาประจำภาคเรียน</p>
+                    </div>
+                    <button onclick="toggleElement('add-course-box')" class="bg-brand-sky text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95">➕ เพิ่มวิชา</button>
+                </div>
+
+                <div id="add-course-box" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-inner">
+                    <h3 class="font-title text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">กรอกข้อมูลวิชาใหม่</h3>
+                    <div class="flex flex-col gap-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-500 mb-1">รหัสวิชา</label>
+                                <input id="new-course-code" type="text" placeholder="เช่น ว21103" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky uppercase">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-500 mb-1">หน่วยกิต</label>
+                                <input id="new-course-credits" type="number" step="0.5" value="1.5" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-500 mb-1">ชื่อวิชา</label>
+                            <input id="new-course-name" type="text" placeholder="เช่น วิทยาการคำนวณ" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-500 mb-1">ห้องเรียน</label>
+                            <input id="new-course-classroom" type="text" placeholder="เช่น ม.1/1 หรือ ม.2/3" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-3">
+                        <button onclick="toggleElement('add-course-box')" class="bg-slate-300 text-slate-700 text-xs px-4 py-2 rounded-lg font-bold">ยกเลิก</button>
+                        <button onclick="addNewCourse()" class="bg-brand-deep text-white text-xs px-4 py-2 rounded-lg font-bold">บันทึก</button>
+                    </div>
+                </div>
+
+                <div id="course-list-container" class="flex flex-col gap-3"></div>
+            </div>
+
+            <!-- 4. STUDENTS VIEW -->
+            <div id="view-students" class="view-content hidden flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="font-title font-bold text-lg text-slate-800">รายชื่อนักเรียน</h2>
+                        <p class="text-xs text-slate-500">จัดการผู้เรียนแยกตามห้อง</p>
+                    </div>
+                    <button onclick="toggleElement('add-student-box')" class="bg-brand-sky text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-md active:scale-95">➕ เพิ่มนักเรียน</button>
+                </div>
+
+                <div class="bg-white border border-slate-100 rounded-xl p-3 flex justify-between items-center shadow-sm">
+                    <span class="text-xs text-slate-500 font-bold">กรองรายห้อง:</span>
+                    <select id="student-filter-classroom" onchange="renderStudentList()" class="bg-slate-50 text-xs font-bold text-slate-700 px-3 py-1.5 border border-slate-200 rounded-lg outline-none"></select>
+                </div>
+
+                <div id="add-student-box" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-inner">
+                    <h3 class="font-title text-xs font-bold text-slate-600 mb-3 uppercase tracking-wide">เพิ่มผู้เรียนใหม่</h3>
+                    <div class="flex flex-col gap-3">
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="col-span-1">
+                                <label class="block text-[11px] font-bold text-slate-500 mb-1">เลขที่</label>
+                                <input id="new-std-no" type="number" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-[11px] font-bold text-slate-500 mb-1">ชั้นเรียน</label>
+                                <select id="new-std-class" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky"></select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-500 mb-1">ชื่อ-นามสกุล (พร้อมคำนำหน้า)</label>
+                            <input id="new-std-name" type="text" placeholder="เช่น เด็กชายสมศักดิ์ ขยันงาน" class="w-full text-sm bg-white border border-slate-300 rounded-lg p-2 outline-none focus:ring-2 focus:ring-brand-sky">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-3">
+                        <button onclick="toggleElement('add-student-box')" class="bg-slate-300 text-slate-700 text-xs px-4 py-2 rounded-lg font-bold">ยกเลิก</button>
+                        <button onclick="addNewStudent()" class="bg-brand-deep text-white text-xs px-4 py-2 rounded-lg font-bold">บันทึก</button>
+                    </div>
+                </div>
+
+                <div class="text-[11px] text-slate-500 font-bold px-1 flex justify-between items-center">
+                    <span>รายชื่อในห้องนี้</span>
+                    <span id="classroom-students-count" class="text-brand-deep">0 คน</span>
+                </div>
+                <div id="student-list-container" class="flex flex-col gap-2.5 max-h-[400px] overflow-y-auto pr-1"></div>
+            </div>
+
+            <!-- 5. ATTENDANCE VIEW -->
+            <div id="view-attendance" class="view-content hidden flex flex-col gap-4">
+                <div>
+                    <h2 class="font-title font-bold text-lg text-slate-800">เช็คชื่อเข้าชั้นเรียน</h2>
+                    <p class="text-xs text-slate-500">บันทึกสถานะการเข้าเรียนประจำคาบ</p>
+                </div>
+
+                <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">เลือกวิชาและห้อง</label>
+                            <select id="att-select-course" onchange="onAttendanceParamsChanged()" class="w-full text-xs font-bold text-slate-700 p-2 border border-slate-200 rounded-lg outline-none bg-slate-50"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">วันที่</label>
+                            <input id="att-select-date" type="date" onchange="onAttendanceParamsChanged()" class="w-full text-xs font-bold text-slate-700 p-1.5 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center bg-slate-100 p-2.5 rounded-xl text-xs font-bold text-slate-600">
+                    <span id="att-progress-status">เช็ครายชื่อไปแล้ว 0 / 0 คน</span>
+                    <span id="att-percentage" class="text-brand-sky">0%</span>
+                </div>
+
+                <div id="attendance-list-container" class="flex flex-col gap-3 max-h-[340px] overflow-y-auto pr-1"></div>
+
+                <button onclick="saveAttendanceToCloud()" class="w-full bg-brand-deep text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg flex items-center justify-center gap-2 mt-2 active:scale-95 transition-all">
+                    💾 บันทึกการเช็คชื่อสู่ Cloud
+                </button>
+            </div>
+
+            <!-- 6. OMR VIEW -->
+            <div id="view-omr" class="view-content hidden flex flex-col gap-4">
+                <div>
+                    <h2 class="font-title font-bold text-lg text-slate-800">ระบบข้อสอบ OMR</h2>
+                    <p class="text-xs text-slate-500">พิมพ์กระดาษคำตอบ ตั้งเฉลย และสแกนตรวจ</p>
+                </div>
+
+                <!-- 3-Tab Bar -->
+                <div class="flex bg-slate-100 rounded-2xl p-1 gap-1">
+                    <button onclick="switchOMRTab('print')" id="omr-tab-print" class="flex-1 text-center py-2.5 rounded-xl text-[11px] font-bold transition-all bg-white text-brand-deep shadow-sm">🖨️ กระดาษคำตอบ</button>
+                    <button onclick="switchOMRTab('key')"   id="omr-tab-key"   class="flex-1 text-center py-2.5 rounded-xl text-[11px] font-bold transition-all text-slate-500">✏️ ตั้งเฉลย</button>
+                    <button onclick="switchOMRTab('scan')"  id="omr-tab-scan"  class="flex-1 text-center py-2.5 rounded-xl text-[11px] font-bold transition-all text-slate-500">📸 สแกน</button>
+                </div>
+
+                <!-- ── SUB-VIEW: PRINT ANSWER SHEET ── -->
+                <div id="omr-sub-print" class="flex flex-col gap-3">
+                    <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm flex flex-col gap-3">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">ตั้งค่ากระดาษคำตอบ</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">วิชา</label>
+                                <select id="print-course-select" onchange="updatePrintPreview()" class="w-full text-xs font-bold text-slate-700 p-2 border border-slate-200 rounded-lg outline-none bg-slate-50"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">จำนวนข้อ</label>
+                                <select id="print-num-questions" onchange="updatePrintPreview()" class="w-full text-xs font-bold text-slate-700 p-2 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                                    <option value="10">10 ข้อ</option>
+                                    <option value="15" selected>15 ข้อ</option>
+                                    <option value="20">20 ข้อ</option>
+                                    <option value="25">25 ข้อ</option>
+                                    <option value="30">30 ข้อ</option>
+                                    <option value="40">40 ข้อ</option>
+                                    <option value="50">50 ข้อ</option>
+                                    <option value="60">60 ข้อ</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">ตัวเลือก</label>
+                                <select id="print-num-choices" onchange="updatePrintPreview()" class="w-full text-xs font-bold text-slate-700 p-2 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                                    <option value="4">4 ตัวเลือก (ก–ง)</option>
+                                    <option value="5">5 ตัวเลือก (ก–จ)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">จำนวนชุด</label>
+                                <select id="print-num-copies" class="w-full text-xs font-bold text-slate-700 p-2 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                                    <option value="1">1 ชุด</option>
+                                    <option value="5">5 ชุด</option>
+                                    <option value="10">10 ชุด</option>
+                                    <option value="20">20 ชุด</option>
+                                    <option value="30">30 ชุด</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Mini Preview -->
+                    <div class="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-3 overflow-hidden" style="height:180px;">
+                        <p class="text-[9px] text-slate-400 font-bold mb-1 text-center uppercase tracking-wide">ตัวอย่างกระดาษคำตอบ</p>
+                        <div id="answer-sheet-mini-preview" class="bg-white rounded shadow-sm border border-slate-200" style="transform:scale(0.48);transform-origin:top left;width:210%;min-height:300px;"></div>
+                    </div>
+                    <button onclick="printAnswerSheet()" class="w-full bg-brand-deep text-white font-bold py-3.5 rounded-2xl shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all">
+                        🖨️ พิมพ์กระดาษคำตอบ
+                    </button>
+                    <button onclick="downloadAnswerSheetPDF()" class="w-full bg-slate-700 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 text-sm">
+                        📥 ดาวน์โหลด PDF
+                    </button>
+                </div>
+
+                <!-- ── SUB-VIEW: ANSWER KEY ── -->
+                <div id="omr-sub-key" class="hidden flex flex-col gap-3">
+                    <div class="bg-white border border-slate-100 rounded-xl p-3 shadow-sm flex flex-col gap-2">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">วิชา</label>
+                                <select id="omr-key-course-select" onchange="renderOMRKeyGrid()" class="w-full text-xs border border-slate-200 rounded-lg p-2 outline-none bg-slate-50 font-bold text-slate-700"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">จำนวนข้อ</label>
+                                <select id="omr-key-num-questions" onchange="renderOMRKeyGrid()" class="w-full text-xs border border-slate-200 rounded-lg p-2 outline-none bg-slate-50 font-bold text-slate-700">
+                                    <option value="10">10 ข้อ</option>
+                                    <option value="15" selected>15 ข้อ</option>
+                                    <option value="20">20 ข้อ</option>
+                                    <option value="25">25 ข้อ</option>
+                                    <option value="30">30 ข้อ</option>
+                                    <option value="40">40 ข้อ</option>
+                                    <option value="50">50 ข้อ</option>
+                                    <option value="60">60 ข้อ</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">ตัวเลือก</label>
+                                <select id="omr-key-num-choices" onchange="renderOMRKeyGrid()" class="w-full text-xs border border-slate-200 rounded-lg p-2 outline-none bg-slate-50 font-bold text-slate-700">
+                                    <option value="4">4 (ก–ง)</option>
+                                    <option value="5">5 (ก–จ)</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <p class="text-[11px] text-brand-sky font-bold" id="omr-key-filled-count"></p>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-400 px-1">คลิกเลือกตัวเลือกที่ถูกต้อง (วงกลมสีเขียว = เฉลย)</p>
+                    <div class="bg-white border border-slate-100 rounded-2xl p-3 shadow-inner max-h-[300px] overflow-y-auto">
+                        <div id="omr-key-grid-target" class="divide-y divide-slate-50"></div>
+                    </div>
+                    <button onclick="saveOMRAnswerKey()" class="w-full bg-brand-emerald text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow active:scale-95">
+                        ✅ บันทึกเฉลยสู่ Cloud
+                    </button>
+                </div>
+
+                <!-- ── SUB-VIEW: SCAN & GRADE ── -->
+                <div id="omr-sub-scan" class="hidden flex flex-col gap-4">
+
+                    <!-- Select course -->
+                    <div class="bg-white border border-slate-100 rounded-2xl p-3 shadow-sm flex gap-2 items-center">
+                        <label class="text-xs font-bold text-slate-500 whitespace-nowrap">วิชา:</label>
+                        <select id="scan-course-select" onchange="onScanCourseChanged()" class="flex-1 text-xs border border-slate-200 rounded-lg p-2 outline-none bg-slate-50 font-bold text-slate-700"></select>
+                    </div>
+
+                    <!-- Key status -->
+                    <div id="scan-key-status" class="text-xs px-4 py-2.5 rounded-xl font-bold text-center"></div>
+
+                    <!-- Capture: choose method -->
+                    <div id="scan-choose-method" class="flex flex-col gap-2">
+                        <p class="text-xs text-slate-500 text-center font-bold">เลือกวิธีนำเข้ากระดาษคำตอบ</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="openOMRCamera()" class="flex flex-col items-center gap-2 p-5 bg-brand-sky/10 border-2 border-brand-sky/30 rounded-2xl active:scale-95 transition-all">
+                                <span class="text-4xl">📷</span>
+                                <span class="text-xs font-bold text-brand-sky">ถ่ายภาพ</span>
+                                <span class="text-[10px] text-slate-400 text-center">ใช้กล้องหลัง</span>
+                            </button>
+                            <label class="flex flex-col items-center gap-2 p-5 bg-emerald-50 border-2 border-emerald-200 rounded-2xl active:scale-95 transition-all cursor-pointer">
+                                <span class="text-4xl">🖼️</span>
+                                <span class="text-xs font-bold text-brand-emerald">อัปโหลดรูป</span>
+                                <span class="text-[10px] text-slate-400 text-center">เลือกจากอัลบั้ม</span>
+                                <input id="omr-file-input" type="file" accept="image/*" class="hidden" onchange="handleOMRFileUpload(event)">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Camera view -->
+                    <div id="scan-camera-view" class="hidden flex flex-col gap-2">
+                        <div class="relative bg-black rounded-2xl overflow-hidden" style="aspect-ratio:4/3;">
+                            <video id="omr-camera-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                            <!-- Corner guide -->
+                            <div class="absolute inset-4 pointer-events-none">
+                                <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-sm"></div>
+                                <div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-sm"></div>
+                                <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-sm"></div>
+                                <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-sm"></div>
+                                <p class="absolute bottom-2 left-0 right-0 text-center text-white text-[11px] font-bold drop-shadow-lg">วางกระดาษคำตอบให้พอดีกรอบ</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="captureOMRPhoto()" class="flex-1 bg-white border-4 border-brand-deep text-brand-deep font-black py-4 rounded-2xl text-base flex items-center justify-center gap-2 active:scale-95 shadow-lg">
+                                ⬤ ถ่ายภาพ
+                            </button>
+                            <button onclick="stopOMRCamera()" class="bg-slate-200 text-slate-700 font-bold py-4 px-5 rounded-2xl text-xs active:scale-95">ยกเลิก</button>
+                        </div>
+                    </div>
+
+                    <!-- Image preview -->
+                    <div id="scan-image-preview" class="hidden flex flex-col gap-3">
+                        <div class="relative rounded-2xl overflow-hidden border-2 border-slate-200 shadow bg-slate-50">
+                            <img id="scan-preview-img" src="" alt="กระดาษคำตอบ" class="w-full object-contain" style="max-height:240px;">
+                            <button onclick="resetScanCapture()" class="absolute top-2 right-2 bg-white/90 text-slate-600 text-[10px] font-bold px-3 py-1.5 rounded-full shadow border border-slate-200 active:scale-95">
+                                🔄 เปลี่ยนภาพ
+                            </button>
+                        </div>
+                        <button onclick="startOMRScan()" class="w-full bg-gradient-to-r from-brand-deep to-brand-sky text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">
+                            🔍 สแกนและตรวจกระดาษคำตอบด้วย AI
+                        </button>
+                    </div>
+
+                    <!-- Scanning progress -->
+                    <div id="scan-progress" class="hidden flex flex-col items-center gap-4 py-10 bg-white rounded-2xl border border-slate-100 shadow">
+                        <div class="relative w-14 h-14">
+                            <div class="spinner" style="width:56px;height:56px;border-width:5px;"></div>
+                            <span class="absolute inset-0 flex items-center justify-center text-2xl">🔍</span>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm font-bold text-slate-700" id="scan-progress-text">AI กำลังอ่านกระดาษคำตอบ...</p>
+                            <p class="text-xs text-slate-400 mt-1">Claude Vision กำลังตรวจคำตอบและชื่อนักเรียน</p>
+                        </div>
+                    </div>
+
+                    <!-- Scan Results -->
+                    <div id="scan-result-area" class="hidden flex flex-col gap-3">
+
+                        <!-- Score banner -->
+                        <div id="scan-score-banner" class="rounded-2xl p-5 text-center shadow-md">
+                            <p class="text-[10px] font-bold uppercase tracking-wide opacity-70">คะแนนที่ได้จากการสแกน</p>
+                            <p class="text-5xl font-black my-2" id="scan-score-display">-</p>
+                            <p class="text-sm font-bold opacity-80" id="scan-score-sub">-</p>
+                        </div>
+
+                        <!-- Student match card -->
+                        <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm flex flex-col gap-3">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">ข้อมูลนักเรียนจากกระดาษ</p>
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="bg-slate-50 rounded-xl p-2.5">
+                                    <p class="text-slate-400 text-[10px] mb-1">ชื่อที่อ่านได้</p>
+                                    <p class="font-bold text-slate-800 break-all" id="scan-detected-name">-</p>
+                                </div>
+                                <div class="bg-slate-50 rounded-xl p-2.5">
+                                    <p class="text-slate-400 text-[10px] mb-1">ชั้น/ห้อง</p>
+                                    <p class="font-bold text-slate-800" id="scan-detected-class">-</p>
+                                </div>
+                            </div>
+
+                            <!-- Matched student display -->
+                            <div id="scan-matched-student" class="hidden p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <p class="text-[10px] font-bold text-emerald-600 mb-1">✅ จับคู่กับนักเรียนในระบบ</p>
+                                        <p class="text-sm font-extrabold text-slate-800" id="scan-matched-name">-</p>
+                                        <p class="text-[11px] text-slate-500 mt-0.5" id="scan-matched-info">-</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-[10px] font-bold text-emerald-600" id="scan-match-confidence"></p>
+                                    </div>
+                                </div>
+                                <button onclick="showManualMatch()" class="mt-2 text-[10px] text-slate-400 underline">เปลี่ยนนักเรียน</button>
+                            </div>
+
+                            <!-- Manual match (shown if not matched or user clicks "เปลี่ยน") -->
+                            <div id="scan-manual-match" class="hidden flex flex-col gap-2">
+                                <p class="text-[11px] text-amber-700 font-bold">⚠️ ไม่พบนักเรียน — กรุณาเลือกจากรายชื่อ:</p>
+                                <select id="scan-student-select" class="w-full text-sm border-2 border-amber-300 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50 font-bold text-slate-700"></select>
+                            </div>
+                        </div>
+
+                        <!-- Answer comparison table -->
+                        <div class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+                            <div class="flex justify-between items-center mb-2">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">ตารางเปรียบเทียบคำตอบ</p>
+                                <div class="flex gap-2 text-[10px] font-bold">
+                                    <span class="text-brand-emerald" id="scan-correct-count"></span>
+                                    <span class="text-red-500" id="scan-wrong-count"></span>
+                                </div>
+                            </div>
+                            <div class="max-h-52 overflow-y-auto rounded-lg border border-slate-100">
+                                <table class="w-full text-xs border-collapse">
+                                    <thead class="sticky top-0">
+                                        <tr class="bg-slate-100 text-slate-600 font-bold">
+                                            <th class="p-2 text-center border-b border-slate-200">ข้อ</th>
+                                            <th class="p-2 text-center border-b border-slate-200">เฉลย</th>
+                                            <th class="p-2 text-center border-b border-slate-200">คำตอบ</th>
+                                            <th class="p-2 text-center border-b border-slate-200">ผล</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="scan-answer-tbody" class="divide-y divide-slate-50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Action buttons -->
+                        <div class="flex gap-2">
+                            <button onclick="confirmSaveOMRScore()" class="flex-1 bg-brand-emerald text-white font-bold py-4 rounded-2xl shadow-md flex items-center justify-center gap-1.5 active:scale-95">
+                                ✅ บันทึกคะแนน
+                            </button>
+                            <button onclick="resetScanAll()" class="bg-slate-200 text-slate-600 font-bold py-4 px-5 rounded-2xl active:scale-95 text-xs">
+                                📷 สแกนใหม่
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Saved scores in this subject -->
+                    <div id="scan-scores-summary-wrap" class="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+                        <h4 class="font-title font-bold text-sm text-slate-700 mb-3">📊 คะแนนที่บันทึกแล้วในวิชานี้</h4>
+                        <div id="scan-saved-scores-list" class="flex flex-col gap-1.5 max-h-44 overflow-y-auto text-xs text-slate-600">
+                            <p class="text-slate-400 text-center py-2">ยังไม่มีข้อมูลคะแนน</p>
+                        </div>
+                    </div>
+
+                </div><!-- end omr-sub-scan -->
+            </div>
+
+            <!-- 7. REPORTS ปพ.5 VIEW -->
+            <div id="view-reports" class="view-content hidden flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="font-title font-bold text-lg text-slate-800">ส่งออกเอกสาร ปพ.5</h2>
+                        <p class="text-xs text-slate-500">พรีวิว พิมพ์ และดาวน์โหลด PDF</p>
+                    </div>
+                </div>
+
+                <!-- Config -->
+                <div class="bg-white border border-slate-100 rounded-2xl p-3 shadow-sm flex flex-col gap-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">เลือกวิชา</label>
+                            <select id="report-select-course" onchange="generateReportPreview()" class="w-full text-xs font-bold text-slate-700 p-2 border border-slate-200 rounded-lg outline-none bg-slate-50"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">ชื่อสถานศึกษา</label>
+                            <input id="report-input-school" type="text" oninput="generateReportPreview()" class="w-full text-xs font-bold text-slate-700 p-1.5 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">ปีการศึกษา</label>
+                            <input id="report-input-year" type="text" oninput="generateReportPreview()" class="w-full text-xs font-bold text-slate-700 p-1.5 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">คะแนนเต็มสอบ</label>
+                            <input id="report-total-score" type="number" value="15" oninput="generateReportPreview()" class="w-full text-xs font-bold text-slate-700 p-1.5 border border-slate-200 rounded-lg outline-none bg-slate-50">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="bg-white border-2 border-slate-300 rounded-2xl p-4 shadow-md max-h-[380px] overflow-auto" id="printable-report-area">
+                    <div class="text-center border-b border-dashed border-slate-300 pb-3 mb-3">
+                        <h3 class="font-extrabold text-xs uppercase tracking-wide">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน (ปพ.5)</h3>
+                        <p class="text-slate-500 text-[9px]" id="report-header-sub">โรงเรียน... • ภาคเรียนที่ 1 ปีการศึกษา 2569</p>
+                        <p class="font-bold text-[9px] mt-1 text-slate-700" id="report-header-subject">รายวิชา: กำลังโหลด...</p>
+                    </div>
+                    <table class="w-full text-left border-collapse border border-slate-200">
+                        <thead>
+                            <tr class="bg-slate-50 text-[9px] font-bold">
+                                <th class="border border-slate-200 p-1 text-center w-8">เลขที่</th>
+                                <th class="border border-slate-200 p-1">ชื่อ-นามสกุล</th>
+                                <th class="border border-slate-200 p-1 text-center">เข้าเรียน</th>
+                                <th class="border border-slate-200 p-1 text-center">คะแนน</th>
+                                <th class="border border-slate-200 p-1 text-center">ผลการเรียน</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-table-body-target" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                    <div class="mt-4 flex flex-col gap-1 text-[9px] text-slate-500">
+                        <p>📌 หมายเหตุ: ข้อมูลคำนวณอัตโนมัติจากระบบ Teacher Buddy</p>
+                        <p>👨‍🏫 ลงนามครูผู้สอน: .................................................</p>
+                        <p>📅 วันที่: .................................................</p>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="printPP5()" class="bg-brand-deep text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow text-xs active:scale-95">
+                        🖨️ พิมพ์ ปพ.5
+                    </button>
+                    <button onclick="downloadPP5AsPDF()" class="bg-slate-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow text-xs active:scale-95">
+                        📥 ดาวน์โหลด PDF
+                    </button>
+                </div>
+                <button onclick="exportToCSV()" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow text-xs active:scale-95">
+                    📊 ส่งออกเป็น CSV (Excel)
+                </button>
+            </div>
+
+            <!-- 8. SETTINGS VIEW -->
+            <div id="view-settings" class="view-content hidden flex flex-col gap-4">
+                <div>
+                    <h2 class="font-title font-bold text-lg text-slate-800">โปรไฟล์ครู</h2>
+                    <p class="text-xs text-slate-500">ข้อมูลนี้จะแสดงบนหัวเอกสาร ปพ.5</p>
+                </div>
+
+                <!-- LINE Profile Card -->
+                <div class="bg-gradient-to-r from-[#06C755]/10 to-emerald-50 border border-[#06C755]/30 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+                    <div class="w-16 h-16 rounded-full overflow-hidden border-3 border-[#06C755] flex-shrink-0 bg-slate-100 shadow" style="border-width:3px;">
+                        <img id="settings-line-avatar" src="" alt="LINE Profile" class="w-full h-full object-cover hidden">
+                        <div id="settings-line-avatar-fallback" class="w-full h-full flex items-center justify-center text-2xl font-bold text-[#06C755]">👤</div>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-1.5 mb-1">
+                            <svg class="w-4 h-4 fill-[#06C755] flex-shrink-0" viewBox="0 0 24 24"><path d="M24 10.304c0-5.369-5.383-9.738-12-9.738s-12 4.369-12 9.738c0 4.814 4.269 8.846 10.036 9.586.391.084.922.258 1.057.592.12.301.079.771.038 1.077l-.164 1.037c-.049.317-.234 1.246 1.011.679 1.245-.567 6.721-3.958 9.16-6.774 2.17-2.499 2.862-4.664 2.862-6.197z"/></svg>
+                            <span class="text-xs font-bold text-[#06C755]">เชื่อมต่อ LINE แล้ว</span>
+                        </div>
+                        <p class="text-sm font-bold text-slate-800 truncate" id="settings-line-name">กำลังโหลด...</p>
+                        <p class="text-[10px] text-slate-400 font-mono truncate mt-0.5" id="settings-line-uid">uid: -</p>
+                    </div>
+                </div>
+
+                <!-- Profile Fields -->
+                <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow flex flex-col gap-4">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">ข้อมูลสำหรับออกเอกสาร ปพ.5</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">ชื่อจริง</label>
+                            <input id="profile-first-name" type="text" placeholder="เช่น สมศักดิ์" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-brand-sky">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">นามสกุล</label>
+                            <input id="profile-last-name" type="text" placeholder="เช่น ขยันงาน" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-brand-sky">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">ชื่อสถานศึกษา</label>
+                        <input id="profile-school-name" type="text" placeholder="เช่น โรงเรียนบ้านโคกประดู่" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-brand-sky">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">สังกัด</label>
+                        <input id="profile-affiliation" type="text" placeholder="เช่น สพป.สตูล เขต 1 หรือ สพม.เขต 16" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-brand-sky">
+                        <p class="text-[10px] text-slate-400 mt-1">สำนักงานเขตพื้นที่การศึกษา / หน่วยงานต้นสังกัด</p>
+                    </div>
+                    <button onclick="saveProfileSettings()" class="w-full bg-brand-deep text-white font-bold py-3.5 rounded-xl shadow active:scale-95">
+                        💾 บันทึกและซิงค์ไปยัง Cloud
+                    </button>
+                </div>
+
+                <!-- GAS URL Box -->
+                <div class="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs text-amber-800 flex flex-col gap-1">
+                    <p class="font-bold">⚙️ ตั้งค่า GAS Backend URL</p>
+                    <p class="opacity-90 leading-relaxed mt-1">ใส่ URL ของ Google Apps Script Web App ที่ Deploy แล้ว</p>
+                    <input id="settings-gas-url" type="url" placeholder="https://script.google.com/macros/s/..." class="mt-2 w-full text-xs bg-white border border-amber-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-400 font-mono">
+                    <button onclick="saveGASUrl()" class="mt-2 bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded-lg active:scale-95">บันทึก URL</button>
+                </div>
+
+                <!-- LIFF ID Box -->
+                <div class="bg-green-50 border border-green-100 rounded-xl p-4 text-xs text-green-900 flex flex-col gap-1">
+                    <p class="font-bold flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 fill-[#06C755]" viewBox="0 0 24 24"><path d="M24 10.304c0-5.369-5.383-9.738-12-9.738s-12 4.369-12 9.738c0 4.814 4.269 8.846 10.036 9.586.391.084.922.258 1.057.592.12.301.079.771.038 1.077l-.164 1.037c-.049.317-.234 1.246 1.011.679 1.245-.567 6.721-3.958 9.16-6.774 2.17-2.499 2.862-4.664 2.862-6.197z"/></svg>
+                        ตั้งค่า LINE LIFF ID
+                    </p>
+                    <p class="opacity-90 leading-relaxed mt-1">LIFF ID จาก LINE Developers Console (ต้องสร้าง LIFF App ก่อน)</p>
+                    <input id="settings-liff-id" type="text" placeholder="1234567890-xxxxxxxx" class="mt-2 w-full text-xs bg-white border border-green-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-green-400 font-mono">
+                    <button onclick="saveLiffId()" class="mt-2 bg-[#06C755] text-white text-xs font-bold px-4 py-2 rounded-lg active:scale-95">บันทึก LIFF ID และ Reload</button>
+                </div>
+
+                <!-- Danger zone -->
+                <div class="bg-red-50 border border-red-100 rounded-xl p-4 text-xs text-red-800">
+                    <p class="font-bold">⚠️ โซนอันตราย</p>
+                    <button onclick="clearLocalData()" class="mt-2 bg-red-500 text-white text-xs font-bold px-4 py-2 rounded-lg active:scale-95">🗑️ ล้างข้อมูลในเครื่อง (localStorage)</button>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- BOTTOM NAV -->
+        <nav class="absolute bottom-0 w-full bg-white border-t border-slate-100 grid grid-cols-4 py-2 z-40">
+            <button onclick="switchTab('home')" id="tab-home" class="nav-tab flex flex-col items-center gap-1 text-slate-400 font-bold active:scale-95 transition-all">
+                <span class="text-xl">🏠</span><span class="text-[10px]">หน้าหลัก</span>
+            </button>
+            <button onclick="switchTab('courses')" id="tab-courses" class="nav-tab flex flex-col items-center gap-1 text-slate-400 font-bold active:scale-95 transition-all">
+                <span class="text-xl">📖</span><span class="text-[10px]">รายวิชา</span>
+            </button>
+            <button onclick="switchTab('attendance')" id="tab-attendance" class="nav-tab flex flex-col items-center gap-1 text-slate-400 font-bold active:scale-95 transition-all">
+                <span class="text-xl">✏️</span><span class="text-[10px]">เช็คชื่อ</span>
+            </button>
+            <button onclick="switchTab('settings')" id="tab-settings" class="nav-tab flex flex-col items-center gap-1 text-slate-400 font-bold active:scale-95 transition-all">
+                <span class="text-xl">⚙️</span><span class="text-[10px]">ตั้งค่า</span>
+            </button>
+        </nav>
+
+    </div><!-- end main-shell -->
+
+</div><!-- end mobile frame -->
+
+<!-- SEMESTER MODAL -->
+<div id="semester-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-t-3xl md:rounded-3xl p-6 shadow-2xl flex flex-col gap-4">
+        <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+            <span class="font-title font-bold text-slate-800 text-base">สลับภาคเรียน</span>
+            <button onclick="closeSemesterModal()" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+        <div id="modal-semester-list-target" class="flex flex-col gap-2"></div>
+    </div>
+</div>
+
+<!-- ====================================================== -->
+<!-- JAVASCRIPT ENGINE                                        -->
+<!-- ====================================================== -->
+<script>
+// ==========================================================
+// 0. CONFIG
+// ==========================================================
+let GAS_URL  = localStorage.getItem('teacher_buddy_gas_url')  || '';
+let LIFF_ID  = localStorage.getItem('teacher_buddy_liff_id')  || '';
+// !! วิธีรับ LIFF_ID: ไปที่ https://developers.line.biz/console/
+// สร้าง Channel → เพิ่ม LIFF App → type: Full → ได้ LIFF ID
+// แล้วไปที่ ⚙️ ตั้งค่า → ใส่ LIFF ID และบันทึก
+
+// ==========================================================
+// 1. STATE MANAGEMENT
+// ==========================================================
+const DEFAULT_STATE = {
+    teacher: { firstName: '', lastName: '', schoolName: '', affiliation: '' },
+    lineProfile: { userId: '', displayName: '', pictureUrl: '', statusMessage: '' },
+    semesters: [],
+    courses: [],
+    students: [],
+    attendance: {},
+    omrKeys: {},
+    omrScanResults: {},
+    omrConfig: {},        // { courseId: { numQuestions:15, numChoices:4 } }
+    onboardingStep: 0
+};
+
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let currentUserId = '';
+
+function persistState() {
+    localStorage.setItem('teacher_buddy_state_v3_' + currentUserId, JSON.stringify(state));
+}
+
+function loadLocalState() {
+    const saved = localStorage.getItem('teacher_buddy_state_v3_' + currentUserId);
+    if (saved) {
+        try { state = JSON.parse(saved); return true; }
+        catch(e) { console.error('State parse error', e); }
+    }
+    return false;
+}
+
+// ==========================================================
+// 2. GAS API LAYER
+// ==========================================================
+async function gasGet(params) {
+    if (!GAS_URL) throw new Error('GAS_URL ยังไม่ได้ตั้งค่า กรุณาไปที่ ตั้งค่า → ใส่ URL ของ GAS');
+    const qs = new URLSearchParams({ ...params, userId: currentUserId }).toString();
+    const res = await fetch(`${GAS_URL}?${qs}`, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+async function gasPost(body) {
+    if (!GAS_URL) throw new Error('GAS_URL ยังไม่ได้ตั้งค่า กรุณาไปที่ ตั้งค่า → ใส่ URL ของ GAS');
+    const res = await fetch(GAS_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain' }, // GAS ต้องการ text/plain เพื่อหลีก CORS preflight
+        body: JSON.stringify({ ...body, userId: currentUserId })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+// ดึง State ทั้งหมดจาก Cloud
+async function fetchStateFromCloud() {
+    setSyncStatus('⏳ กำลังซิงค์...');
+    try {
+        const result = await gasGet({ action: 'getState' });
+        if (result.success && result.state) {
+            // Merge cloud state แต่รักษา lineProfile ปัจจุบัน
+            const savedLineProfile = state.lineProfile || {};
+            state = result.state;
+            // คืน lineProfile ที่ดึงจาก LIFF session จริง (ใหม่กว่า)
+            if (savedLineProfile.userId) state.lineProfile = savedLineProfile;
+            // ตรวจสอบ omrConfig
+            if (!state.omrConfig) state.omrConfig = {};
+            // Pre-fill school name
+            if (state.teacher && state.teacher.schoolName) {
+                const schoolEl = document.getElementById('report-input-school');
+                if (schoolEl && !schoolEl.value) schoolEl.value = state.teacher.schoolName;
+            }
+            persistState();
+            setSyncStatus('☁️ ซิงค์แล้ว');
+            return true;
+        }
+    } catch(e) {
+        console.warn('Cloud fetch failed, using local state:', e.message);
+        setSyncStatus('📴 Offline');
+    }
+    return false;
+}
+
+function setSyncStatus(text) {
+    const el = document.getElementById('sync-status');
+    if(el) el.textContent = text;
+}
+
+// ==========================================================
+// 3. LIFF / LINE AUTHENTICATION
+// ==========================================================
+
+// --- เริ่มต้น LIFF SDK ---
+async function initLiff() {
+    setLoginState('loading', 'กำลังเชื่อมต่อ LINE...');
+
+    if (!LIFF_ID) {
+        setLoginState('error',
+            'ยังไม่ได้ตั้งค่า LIFF ID\nกรุณาไปที่ ⚙️ ตั้งค่า → ใส่ LIFF ID ก่อนใช้งาน',
+            'LIFF ID: ยังไม่ได้ตั้งค่า'
+        );
+        return;
+    }
+
+    try {
+        await liff.init({ liffId: LIFF_ID });
+
+        if (liff.isLoggedIn()) {
+            // ดึง Profile ทันที ไม่ต้องกดปุ่ม
+            await fetchLINEProfileAndEnter();
+        } else {
+            // แสดงปุ่ม Login
+            setLoginState('btn');
+        }
+    } catch (err) {
+        console.error('LIFF init failed:', err);
+        setLoginState('error',
+            `LIFF init ล้มเหลว: ${err.message || err}\nกรุณาตรวจสอบ LIFF ID และ Endpoint URL`,
+            `LIFF ID ที่ใช้: ${LIFF_ID}`
+        );
+    }
+}
+
+// --- จัดการ UI state ของหน้า Login ---
+function setLoginState(mode, message = '', hint = '') {
+    const loading = document.getElementById('login-loading');
+    const btnArea = document.getElementById('login-btn-area');
+    const errArea = document.getElementById('login-error-area');
+
+    loading.classList.add('hidden');
+    btnArea.classList.add('hidden');
+    errArea.classList.add('hidden');
+
+    if (mode === 'loading') {
+        loading.classList.remove('hidden');
+        if (message) document.getElementById('login-loading-text').textContent = message;
+    } else if (mode === 'btn') {
+        btnArea.classList.remove('hidden');
+    } else if (mode === 'error') {
+        errArea.classList.remove('hidden');
+        if (message) document.getElementById('login-error-msg').textContent = message;
+        if (hint)    document.getElementById('login-liff-id-hint').textContent = hint;
+    }
+}
+
+// --- กดปุ่ม LINE Login → redirect ไปหน้า LINE ---
+function loginWithLINE() {
+    if (!liff.isLoggedIn()) {
+        liff.login({ redirectUri: window.location.href });
+    }
+}
+
+// --- ดึง Profile จาก LINE และเข้าสู่แอป ---
+async function fetchLINEProfileAndEnter() {
+    setLoginState('loading', 'กำลังดึงข้อมูลโปรไฟล์ LINE...');
+    try {
+        const profile = await liff.getProfile();
+        // profile = { userId, displayName, pictureUrl, statusMessage }
+
+        currentUserId = profile.userId;
+        state.lineProfile = {
+            userId:        profile.userId,
+            displayName:   profile.displayName   || '',
+            pictureUrl:    profile.pictureUrl     || '',
+            statusMessage: profile.statusMessage  || ''
+        };
+
+        // ถ้ายังไม่มีชื่อครูที่กรอกเอง ให้ pre-fill จาก LINE displayName
+        loadLocalState(); // โหลดข้อมูลจาก localStorage ก่อน
+        if (!state.teacher.firstName && profile.displayName) {
+            // แยก displayName เป็นชื่อ + นามสกุล (ถ้ามีเว้นวรรค)
+            const parts = profile.displayName.trim().split(/\s+/);
+            state.teacher.firstName = parts[0] || '';
+            state.teacher.lastName  = parts.slice(1).join(' ') || '';
+        }
+        // sync lineProfile ลง state เสมอ
+        state.lineProfile = {
+            userId:        profile.userId,
+            displayName:   profile.displayName   || '',
+            pictureUrl:    profile.pictureUrl     || '',
+            statusMessage: profile.statusMessage  || ''
+        };
+
+        localStorage.setItem('teacher_buddy_current_user', currentUserId);
+        persistState();
+
+        // เปิด App
+        enterApp();
+
+    } catch (err) {
+        console.error('getProfile failed:', err);
+        setLoginState('error', `ไม่สามารถดึงข้อมูล LINE Profile ได้: ${err.message || err}`);
+    }
+}
+
+// --- เปิดหน้าแอปหลัก ---
+async function enterApp() {
+    document.getElementById('view-login').style.display = 'none';
+    document.getElementById('main-shell').style.display = 'flex';
+
+    updateAllUISignals();
+    switchTab('home');
+
+    // Sync cloud ใน background
+    if (GAS_URL) {
+        showToast('🔄 กำลังซิงค์ข้อมูลจาก Cloud...', '☁️');
+        const synced = await fetchStateFromCloud();
+        if (synced) {
+            // หลัง sync อาจได้ชื่อครูที่บันทึกไว้ใน cloud กลับมา
+            // แต่ lineProfile ต้องเก็บข้อมูล LINE ปัจจุบันไว้เสมอ
+            const savedProfile = state.lineProfile || {};
+            if (savedProfile.userId !== currentUserId) {
+                state.lineProfile = {
+                    userId:        currentUserId,
+                    displayName:   (await liff.getProfile().catch(() => ({}))).displayName || '',
+                    pictureUrl:    (await liff.getProfile().catch(() => ({}))).pictureUrl  || '',
+                    statusMessage: ''
+                };
+            }
+            updateAllUISignals();
+            showToast('🟢 โหลดข้อมูลจาก Cloud สำเร็จ!', '✅');
+        } else {
+            showToast('📴 ทำงานแบบ Offline (ใช้ข้อมูลในเครื่อง)', '⚠️');
+        }
+
+        // Push LINE profile ขึ้น cloud ทุกครั้งที่ login
+        try {
+            await gasPost({
+                action: 'saveUser',
+                data: {
+                    userId:          currentUserId,
+                    firstName:       state.teacher.firstName,
+                    lastName:        state.teacher.lastName,
+                    schoolName:      state.teacher.schoolName,
+                    affiliation:     state.teacher.affiliation || '',
+                    lineDisplayName: state.lineProfile.displayName,
+                    linePictureUrl:  state.lineProfile.pictureUrl
+                }
+            });
+        } catch(e) { console.warn('Save LINE profile to cloud failed', e); }
+    } else {
+        showToast('👋 ยินดีต้อนรับ! กรุณาตั้งค่า GAS URL เพื่อซิงค์ข้อมูล', '🟡');
+    }
+}
+
+// --- Retry LIFF init ---
+async function retryLiffInit() {
+    await initLiff();
+}
+
+// --- Logout ---
+async function logout() {
+    if (!confirm('ต้องการออกจากระบบใช่ไหมครับ?')) return;
+
+    document.getElementById('main-shell').style.display = 'none';
+    document.getElementById('view-login').style.display = 'flex';
+    currentUserId = '';
+    state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+    // LIFF logout (redirect ออกจาก LINE session)
+    try {
+        if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
+            liff.logout();
+            // liff.logout() จะ reload หน้าอัตโนมัติ
+            return;
+        }
+    } catch(e) { console.warn('liff.logout error', e); }
+
+    // ถ้า liff ไม่พร้อม ก็ reload หน้าธรรมดา
+    window.location.reload();
+}
+
+// Auto-init เมื่อหน้าโหลด
+window.onload = async function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('att-select-date').value = today;
+
+    // โหลด config ที่บันทึกไว้
+    const savedGasUrl  = localStorage.getItem('teacher_buddy_gas_url') || '';
+    const savedLiffId  = localStorage.getItem('teacher_buddy_liff_id') || '';
+    if (savedGasUrl) { GAS_URL = savedGasUrl; }
+    if (savedLiffId) { LIFF_ID = savedLiffId; }
+
+    // อัปเดตช่องใน settings
+    const gasEl  = document.getElementById('settings-gas-url');
+    const liffEl = document.getElementById('settings-liff-id');
+    if (gasEl)  gasEl.value  = savedGasUrl;
+    if (liffEl) liffEl.value = savedLiffId;
+
+    // เริ่ม LIFF
+    await initLiff();
+};
+
+// ==========================================================
+// 4. TOAST NOTIFICATION
+// ==========================================================
+function showToast(message, icon = '✅') {
+    const toast = document.getElementById('toast');
+    document.getElementById('toast-icon').innerText = icon;
+    document.getElementById('toast-message').innerText = message;
+    toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
+    toast.classList.add('translate-y-0', 'opacity-100');
+    setTimeout(() => {
+        toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+    }, 3500);
+}
+
+function toggleElement(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden');
+}
+
+// ==========================================================
+// 5. TAB NAVIGATION
+// ==========================================================
+function switchTab(viewName) {
+    document.querySelectorAll('.view-content').forEach(v => v.classList.add('hidden'));
+    const targetView = document.getElementById('view-' + viewName);
+    if (targetView) targetView.classList.remove('hidden');
+
+    document.querySelectorAll('.nav-tab').forEach(t => {
+        t.classList.remove('text-brand-deep');
+        t.classList.add('text-slate-400');
+    });
+    const activeTab = document.getElementById('tab-' + viewName);
+    if (activeTab) {
+        activeTab.classList.add('text-brand-deep');
+        activeTab.classList.remove('text-slate-400');
+    }
+
+    state.currentView = viewName;
+
+    if (viewName === 'semesters')  renderSemesterList();
+    if (viewName === 'courses')    renderCoursesList();
+    if (viewName === 'students')   { populateClassroomFilters(); renderStudentList(); }
+    if (viewName === 'attendance') { populateAttendanceCoursesSelect(); onAttendanceParamsChanged(); }
+    if (viewName === 'omr')        { initOMRView(); }
+    if (viewName === 'reports')    { populateReportCoursesSelect(); generateReportPreview(); }
+    if (viewName === 'settings')   loadProfileIntoFields();
+}
+
+// ==========================================================
+// 6. SEMESTERS
+// ==========================================================
+function renderSemesterList() {
+    const container = document.getElementById('semester-list-container');
+    container.innerHTML = '';
+
+    if (state.semesters.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 bg-white rounded-2xl border border-slate-100 p-4"><span class="text-3xl block mb-2">📅</span><p class="text-xs text-slate-400">ยังไม่มีภาคเรียน กดปุ่ม "+ เพิ่มเทอม" เพื่อเริ่มต้น</p></div>';
+        return;
+    }
+
+    state.semesters.forEach(sem => {
+        const card = document.createElement('div');
+        card.className = `border rounded-2xl p-4 flex justify-between items-center bg-white shadow-sm transition-all ${sem.isActive ? 'border-brand-sky' : 'border-slate-100'}`;
+        card.innerHTML = `
+            <div class="flex items-center gap-3">
+                <span class="text-xl">${sem.isActive ? '🟢' : '🗓️'}</span>
+                <div>
+                    <p class="text-sm font-bold text-slate-800">ภาคเรียนที่ ${sem.term} / ${sem.year}</p>
+                    <p class="text-xs text-slate-400 mt-0.5">${sem.isActive ? 'เปิดรับข้อมูลอยู่' : 'ประวัติภาคเรียน'}</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                ${sem.isActive
+                    ? '<span class="bg-blue-100 text-brand-sky text-[10px] font-black px-2.5 py-1 rounded-full">กำลังใช้</span>'
+                    : `<button onclick="setActiveSemester('${sem.id}')" class="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-slate-200">ใช้งาน</button>`
+                }
+                <button onclick="deleteSemester('${sem.id}')" class="text-slate-300 hover:text-red-500 p-1.5 text-xs">✕</button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+async function addNewSemester() {
+    const term = parseInt(document.getElementById('new-sem-term').value);
+    const year = parseInt(document.getElementById('new-sem-year').value);
+    if (!year) { alert('กรุณากรอกปีการศึกษา'); return; }
+
+    const newId = generateLocalId();
+    const newSem = { id: newId, term, year, isActive: false };
+    state.semesters.push(newSem);
+    toggleElement('add-semester-box');
+    renderSemesterList();
+    persistState();
+    showToast('🗓️ เพิ่มภาคเรียนสำเร็จ');
+    updateAllUISignals();
+
+    if (GAS_URL) {
+        try {
+            await gasPost({ action: 'saveSemester', data: { ...newSem, userId: currentUserId } });
+            showToast('☁️ ซิงค์ภาคเรียนไปยัง Cloud แล้ว');
+        } catch(e) { showToast('⚠️ บันทึก Local แล้ว (Cloud ล้มเหลว)', '⚠️'); }
+    }
+}
+
+async function setActiveSemester(semId) {
+    state.semesters.forEach(s => { s.isActive = (s.id == semId); });
+    updateAllUISignals();
+    renderSemesterList();
+    persistState();
+    showToast('🔄 สลับภาคเรียนสำเร็จ');
+
+    if (GAS_URL) {
+        try { await gasPost({ action: 'setActiveSemester', semesterId: semId }); }
+        catch(e) { console.warn('Cloud setActive failed', e); }
+    }
+}
+
+async function deleteSemester(semId) {
+    const sem = state.semesters.find(s => s.id == semId);
+    if (sem && sem.isActive) { alert('ไม่สามารถลบภาคเรียนที่กำลังใช้งานอยู่ได้'); return; }
+    if (!confirm('ยืนยันลบภาคเรียนนี้?')) return;
+    state.semesters = state.semesters.filter(s => s.id != semId);
+    renderSemesterList();
+    persistState();
+    showToast('ลบภาคเรียนสำเร็จ', '🗑️');
+    updateAllUISignals();
+
+    if (GAS_URL) {
+        try { await gasPost({ action: 'deleteSemester', semesterId: semId }); }
+        catch(e) { console.warn('Cloud delete failed', e); }
+    }
+}
+
+// ==========================================================
+// 7. COURSES
+// ==========================================================
+function renderCoursesList() {
+    const container = document.getElementById('course-list-container');
+    container.innerHTML = '';
+    const activeSem = getActiveSemester();
+
+    if (!activeSem) {
+        container.innerHTML = '<div class="text-center py-6 bg-amber-50 rounded-2xl border border-amber-100 p-4"><p class="text-xs text-amber-700 font-bold">⚠️ กรุณาสร้างและเลือกภาคเรียนก่อนเพิ่มวิชา</p></div>';
+        return;
+    }
+
+    const filtered = state.courses.filter(c => c.semesterId == activeSem.id);
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 bg-white rounded-2xl border border-slate-100 p-4"><span class="text-3xl block mb-2">📁</span><p class="text-xs text-slate-400">ยังไม่มีรายวิชาในเทอมนี้</p></div>';
+        return;
+    }
+
+    filtered.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-slate-100 rounded-2xl p-4 flex justify-between items-center shadow-sm hover:border-brand-sky transition-all';
+        card.innerHTML = `
+            <div class="border-l-4 border-brand-sky pl-3">
+                <p class="text-sm font-extrabold text-slate-800">${c.name}</p>
+                <p class="text-[11px] text-slate-400 mt-1">รหัส ${c.code} • ${c.credits} หน่วยกิต • ห้อง ${c.classroom}</p>
+            </div>
+            <button onclick="deleteCourse('${c.id}')" class="text-slate-300 hover:text-red-500 text-xs p-2">✕</button>
+        `;
+        container.appendChild(card);
+    });
+}
+
+async function addNewCourse() {
+    const code = document.getElementById('new-course-code').value.trim().toUpperCase();
+    const name = document.getElementById('new-course-name').value.trim();
+    const credits = parseFloat(document.getElementById('new-course-credits').value) || 1.5;
+    const classroom = document.getElementById('new-course-classroom').value.trim();
+
+    if (!code || !name || !classroom) { alert('กรุณากรอกข้อมูลให้ครบถ้วน'); return; }
+    const activeSem = getActiveSemester();
+    if (!activeSem) { alert('กรุณากำหนดภาคเรียนก่อน'); return; }
+
+    const newId = generateLocalId();
+    const newCourse = { id: newId, semesterId: activeSem.id, code, name, credits, classroom };
+    state.courses.push(newCourse);
+
+    document.getElementById('new-course-code').value = '';
+    document.getElementById('new-course-name').value = '';
+    toggleElement('add-course-box');
+    renderCoursesList();
+    updateAllUISignals();
+    persistState();
+    showToast('📖 เพิ่มรายวิชาสำเร็จ');
+
+    if (GAS_URL) {
+        try { await gasPost({ action: 'saveCourse', data: { ...newCourse, userId: currentUserId } }); }
+        catch(e) { console.warn('Cloud save course failed', e); }
+    }
+}
+
+async function deleteCourse(courseId) {
+    if (!confirm('ยืนยันลบวิชานี้?')) return;
+    state.courses = state.courses.filter(c => c.id != courseId);
+    renderCoursesList();
+    updateAllUISignals();
+    persistState();
+    showToast('ลบวิชาสำเร็จ', '🗑️');
+
+    if (GAS_URL) {
+        try { await gasPost({ action: 'deleteCourse', courseId }); }
+        catch(e) { console.warn('Cloud delete course failed', e); }
+    }
+}
+
+// ==========================================================
+// 8. STUDENTS
+// ==========================================================
+function getUniqueClassrooms() {
+    const classes = [...new Set(state.courses.map(c => c.classroom))].filter(Boolean);
+    // เพิ่มห้องจาก students ที่มีอยู่แล้วด้วย
+    const studentClasses = [...new Set(state.students.map(s => s.classroom))].filter(Boolean);
+    return [...new Set([...classes, ...studentClasses])].sort();
+}
+
+function populateClassroomFilters() {
+    const classrooms = getUniqueClassrooms();
+    const filterSel = document.getElementById('student-filter-classroom');
+    const addSel = document.getElementById('new-std-class');
+
+    [filterSel, addSel].forEach(sel => {
+        const prev = sel.value;
+        sel.innerHTML = classrooms.map(c => `<option value="${c}">${c}</option>`).join('');
+        if (prev && classrooms.includes(prev)) sel.value = prev;
+    });
+}
+
+function renderStudentList() {
+    const container = document.getElementById('student-list-container');
+    container.innerHTML = '';
+    const selectedClass = document.getElementById('student-filter-classroom').value;
+    const filtered = state.students.filter(s => s.classroom === selectedClass).sort((a,b) => a.no - b.no);
+
+    document.getElementById('classroom-students-count').innerText = `${filtered.length} คน`;
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 bg-slate-50 border border-slate-200 rounded-2xl"><span class="text-2xl block mb-2">👦👧</span><p class="text-xs text-slate-400">ยังไม่มีนักเรียนในห้องนี้</p></div>';
+        return;
+    }
+
+    filtered.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-slate-100 rounded-xl p-3 flex justify-between items-center shadow-sm';
+        card.innerHTML = `
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-xs text-slate-600">${s.no}</div>
+                <div>
+                    <p class="text-sm font-bold text-slate-800">${s.name}</p>
+                    <p class="text-[10px] text-slate-400">ชั้น ${s.classroom}</p>
+                </div>
+            </div>
+            <button onclick="deleteStudent('${s.id}')" class="text-slate-300 hover:text-red-500 text-xs p-1">✕</button>
+        `;
+        container.appendChild(card);
+    });
+}
+
+async function addNewStudent() {
+    const no = parseInt(document.getElementById('new-std-no').value);
+    const name = document.getElementById('new-std-name').value.trim();
+    const classroom = document.getElementById('new-std-class').value;
+
+    if (!no || !name) { alert('กรุณากรอกเลขที่และชื่อนักเรียน'); return; }
+
+    const newId = generateLocalId();
+    const newStd = { id: newId, no, classroom, name };
+    state.students.push(newStd);
+
+    document.getElementById('new-std-no').value = '';
+    document.getElementById('new-std-name').value = '';
+    toggleElement('add-student-box');
+    renderStudentList();
+    updateAllUISignals();
+    persistState();
+    showToast('👦 เพิ่มนักเรียนสำเร็จ');
+
+    if (GAS_URL) {
+        try { await gasPost({ action: 'saveStudent', data: { ...newStd, userId: currentUserId } }); }
+        catch(e) { console.warn('Cloud save student failed', e); }
+    }
+}
+
+async function deleteStudent(studentId) {
+    if (!confirm('ยืนยันลบนักเรียนคนนี้?')) return;
+    state.students = state.students.filter(s => s.id != studentId);
+    renderStudentList();
+    updateAllUISignals();
+    persistState();
+    showToast('ลบนักเรียนสำเร็จ', '🗑️');
+
+    if (GAS_URL) {
+        try { await gasPost({ action: 'deleteStudent', studentId }); }
+        catch(e) { console.warn('Cloud delete student failed', e); }
+    }
+}
+
+// ==========================================================
+// 9. ATTENDANCE
+// ==========================================================
+function populateAttendanceCoursesSelect() {
+    const select = document.getElementById('att-select-course');
+    select.innerHTML = '';
+    const activeSem = getActiveSemester();
+    if (!activeSem) return;
+
+    const filtered = state.courses.filter(c => c.semesterId == activeSem.id);
+    filtered.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.innerText = `${c.name} (${c.code}) - ห้อง ${c.classroom}`;
+        select.appendChild(opt);
+    });
+}
+
+function onAttendanceParamsChanged() {
+    if (document.getElementById('att-select-course').options.length === 0) {
+        populateAttendanceCoursesSelect();
+    }
+    const courseId = document.getElementById('att-select-course').value;
+    const date = document.getElementById('att-select-date').value;
+    const container = document.getElementById('attendance-list-container');
+    container.innerHTML = '';
+
+    if (!courseId || !date) return;
+
+    const courseObj = state.courses.find(c => c.id == courseId);
+    if (!courseObj) return;
+
+    const studentsInClass = state.students.filter(s => s.classroom === courseObj.classroom).sort((a,b) => a.no - b.no);
+
+    if (studentsInClass.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 bg-white rounded-2xl border border-slate-100 p-4"><span class="text-2xl block mb-1">⚠️</span><p class="text-xs text-slate-500 font-bold">ไม่พบนักเรียนในห้อง ${courseObj.classroom}</p><p class="text-[11px] text-slate-400 mt-1">กรุณาเพิ่มนักเรียนในเมนู "นักเรียน" ก่อน</p></div>`;
+        document.getElementById('att-progress-status').innerText = '0 / 0 คน';
+        document.getElementById('att-percentage').innerText = '0%';
+        return;
+    }
+
+    const recordKey = `${courseId}-${date}`;
+    if (!state.attendance[recordKey]) state.attendance[recordKey] = {};
+    const record = state.attendance[recordKey];
+
+    let checkedCount = 0;
+    studentsInClass.forEach(s => {
+        const status = record[s.id] || null;
+        if (status) checkedCount++;
+
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-slate-100 rounded-2xl p-4 flex justify-between items-center shadow-sm';
+        card.innerHTML = `
+            <div>
+                <p class="text-sm font-bold text-slate-800">${s.name}</p>
+                <p class="text-[10px] text-slate-400">เลขที่ ${s.no} • สถานะ: <span id="att-text-${s.id}" class="font-extrabold ${status === 'มา' ? 'text-brand-emerald' : status ? 'text-red-500' : 'text-slate-400'}">${status || 'ยังไม่เช็ค'}</span></p>
+            </div>
+            <div class="flex gap-1.5">
+                <button onclick="setIndividualAttendance('${courseId}', '${date}', '${s.id}', 'มา')" id="btn-att-${s.id}-present" class="text-xs font-black px-3 py-2 rounded-lg transition-all ${status === 'มา' ? 'bg-brand-emerald text-white shadow-md' : 'bg-slate-100 text-slate-600'}">มา</button>
+                <button onclick="setIndividualAttendance('${courseId}', '${date}', '${s.id}', 'ขาด')" id="btn-att-${s.id}-absent" class="text-xs font-black px-3 py-2 rounded-lg transition-all ${status === 'ขาด' ? 'bg-red-500 text-white shadow-md' : 'bg-slate-100 text-slate-600'}">ขาด</button>
+                <button onclick="setIndividualAttendance('${courseId}', '${date}', '${s.id}', 'สาย')" id="btn-att-${s.id}-late" class="text-xs font-black px-3 py-2 rounded-lg transition-all ${status === 'สาย' ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-100 text-slate-600'}">สาย</button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+
+    updateAttProgressBar(studentsInClass.length, checkedCount);
+}
+
+function setIndividualAttendance(courseId, date, studentId, status) {
+    const recordKey = `${courseId}-${date}`;
+    if (!state.attendance[recordKey]) state.attendance[recordKey] = {};
+    state.attendance[recordKey][studentId] = status;
+
+    // อัปเดต UI ทันที
+    const txt = document.getElementById(`att-text-${studentId}`);
+    if (txt) {
+        txt.innerText = status;
+        txt.className = `font-extrabold ${status === 'มา' ? 'text-brand-emerald' : status === 'ขาด' ? 'text-red-500' : 'text-amber-500'}`;
+    }
+
+    const colorMap = { มา: 'bg-brand-emerald', ขาด: 'bg-red-500', สาย: 'bg-amber-500' };
+    const keyMap = { มา: 'present', ขาด: 'absent', สาย: 'late' };
+
+    ['มา', 'ขาด', 'สาย'].forEach(s => {
+        const btn = document.getElementById(`btn-att-${studentId}-${keyMap[s]}`);
+        if (btn) {
+            btn.className = `text-xs font-black px-3 py-2 rounded-lg transition-all ${s === status ? `${colorMap[s]} text-white shadow-md` : 'bg-slate-100 text-slate-600'}`;
+        }
+    });
+
+    // อัปเดต progress
+    const courseObj = state.courses.find(c => c.id == courseId);
+    const studentsInClass = state.students.filter(s => s.classroom === courseObj.classroom);
+    const record = state.attendance[recordKey];
+    let checkedCount = studentsInClass.filter(s => record[s.id]).length;
+    updateAttProgressBar(studentsInClass.length, checkedCount);
+
+    persistState();
+}
+
+function updateAttProgressBar(total, checked) {
+    const pct = total > 0 ? Math.round((checked / total) * 100) : 0;
+    document.getElementById('att-progress-status').innerText = `เช็คชื่อแล้ว ${checked} / ${total} คน`;
+    document.getElementById('att-percentage').innerText = `${pct}%`;
+}
+
+async function saveAttendanceToCloud() {
+    const courseId = document.getElementById('att-select-course').value;
+    const date = document.getElementById('att-select-date').value;
+    if (!courseId || !date) { showToast('⚠️ กรุณาเลือกวิชาและวันที่', '⚠️'); return; }
+
+    const recordKey = `${courseId}-${date}`;
+    const records = state.attendance[recordKey] || {};
+
+    persistState();
+    showToast('💾 บันทึกข้อมูลในเครื่องแล้ว');
+
+    if (!GAS_URL) return;
+    setSyncStatus('⏳ กำลังซิงค์...');
+    try {
+        await gasPost({ action: 'saveAttendance', data: { courseId, date, records } });
+        showToast('☁️ บันทึกการเช็คชื่อสู่ Cloud สำเร็จ!', '🟢');
+        setSyncStatus('☁️ ซิงค์แล้ว');
+    } catch(e) {
+        showToast('⚠️ บันทึก Local แล้ว แต่ Cloud ล้มเหลว', '⚠️');
+        setSyncStatus('📴 Offline');
+    }
+}
+
+// ==========================================================
+// 10. OMR SYSTEM – Print / Answer Key / AI Scan
+// ==========================================================
+
+/* ────────────── state ────────────── */
+let currentScanResult = null;   // เก็บผลสแกนชั่วคราว
+let omrCameraStream   = null;   // MediaStream ของกล้อง
+let capturedImageData = '';     // base64 ภาพที่ถ่าย/อัปโหลด
+
+/* ────────────── INIT / TAB ────────────── */
+function initOMRView() {
+    if (!state.omrConfig) state.omrConfig = {};
+    populateOMRCourseSelects();
+    switchOMRTab('print');
+}
+
+function switchOMRTab(tab) {
+    ['print', 'key', 'scan'].forEach(t => {
+        const subEl = document.getElementById(`omr-sub-${t}`);
+        const btnEl = document.getElementById(`omr-tab-${t}`);
+        if (!subEl || !btnEl) return;
+        const active = t === tab;
+        subEl.classList.toggle('hidden', !active);
+        if (active) {
+            btnEl.className = 'flex-1 text-center py-2.5 rounded-xl text-[11px] font-bold transition-all bg-white text-brand-deep shadow-sm';
+        } else {
+            btnEl.className = 'flex-1 text-center py-2.5 rounded-xl text-[11px] font-bold transition-all text-slate-500';
+        }
+    });
+
+    if (tab === 'print') { populateOMRCourseSelects(); updatePrintPreview(); }
+    if (tab === 'key')   { populateOMRCourseSelects(); renderOMRKeyGrid(); }
+    if (tab === 'scan')  { populateOMRCourseSelects(); onScanCourseChanged(); }
+}
+
+function populateOMRCourseSelects() {
+    const activeSem = getActiveSemester();
+    const filtered = activeSem ? state.courses.filter(c => c.semesterId == activeSem.id) : state.courses;
+    const optHtml = filtered.map(c => `<option value="${c.id}">${c.name} (${c.code})</option>`).join('');
+
+    ['print-course-select','omr-key-course-select','scan-course-select','report-select-course'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const prev = el.value;
+        el.innerHTML = optHtml;
+        if (prev) el.value = prev;
+    });
+}
+
+/* ────────────── PRINT ANSWER SHEET ────────────── */
+function updatePrintPreview() {
+    const preview = document.getElementById('answer-sheet-mini-preview');
+    if (!preview) return;
+    const config = getPrintConfig();
+    preview.innerHTML = generateAnswerSheetBody(config);
+}
+
+function getPrintConfig() {
+    const courseId   = document.getElementById('print-course-select')?.value || '';
+    const numQ       = parseInt(document.getElementById('print-num-questions')?.value) || 15;
+    const numC       = parseInt(document.getElementById('print-num-choices')?.value)   || 4;
+    const numCopies  = parseInt(document.getElementById('print-num-copies')?.value)    || 1;
+    const course     = state.courses.find(c => c.id == courseId);
+    return { course, numQ, numC, numCopies };
+}
+
+function generateAnswerSheetBody(config) {
+    const { course, numQ, numC } = config;
+    const CHOICES = ['ก','ข','ค','ง','จ'].slice(0, numC);
+    const schoolName = state.teacher.schoolName || 'โรงเรียน...';
+    const courseName = course ? course.name : '...';
+    const courseCode = course ? course.code : '';
+    const today = new Date().toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric' });
+
+    // สร้าง columns (3 คอลัมน์)
+    const COLS = 3;
+    const perCol = Math.ceil(numQ / COLS);
+    let colsHTML = '';
+    for (let col = 0; col < COLS; col++) {
+        const start = col * perCol;
+        const end   = Math.min(start + perCol, numQ);
+        let rows = '';
+        for (let q = start; q < end; q++) {
+            const bubbles = CHOICES.map(ch =>
+                `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:2px solid #000;border-radius:50%;font-size:9pt;font-weight:bold;margin-right:3px;">${ch}</span>`
+            ).join('');
+            rows += `<div style="display:flex;align-items:center;padding:3px 0;border-bottom:1px dotted #ccc;min-height:32px;">
+                <span style="width:26px;text-align:right;font-weight:900;font-size:9pt;margin-right:8px;">${q+1}.</span>
+                <div style="display:flex;flex-wrap:nowrap;">${bubbles}</div>
+            </div>`;
+        }
+        const border = col < COLS-1 ? 'border-right:1px solid #bbb;' : '';
+        colsHTML += `<td style="padding:0 10px;vertical-align:top;${border}">${rows}</td>`;
+    }
+
+    return `<div style="font-family:'Sarabun',sans-serif;font-size:11pt;background:white;color:#000;">
+        <div style="text-align:center;border-bottom:2.5px solid #000;padding-bottom:8px;margin-bottom:12px;">
+            <p style="font-size:16pt;font-weight:900;letter-spacing:3px;margin:0 0 4px;">กระดาษคำตอบ</p>
+            <p style="font-size:9.5pt;margin:0 0 2px;">สถานศึกษา: <strong>${schoolName}</strong></p>
+            <p style="font-size:9.5pt;margin:0;">วิชา: <strong>${courseName}</strong> ${courseCode ? `(${courseCode})` : ''} &nbsp;|&nbsp; จำนวน <strong>${numQ}</strong> ข้อ &nbsp;|&nbsp; ${numC} ตัวเลือก</p>
+        </div>
+        <div style="display:grid;grid-template-columns:3fr 1.2fr 0.8fr 1.5fr;gap:8px;margin-bottom:10px;border:1.5px solid #000;padding:8px;border-radius:4px;">
+            <div><span style="font-size:8.5pt;color:#666;">ชื่อ-นามสกุล / Name</span><div style="border-bottom:1px solid #000;margin-top:18px;"></div></div>
+            <div><span style="font-size:8.5pt;color:#666;">ชั้น/ห้อง</span><div style="border-bottom:1px solid #000;margin-top:18px;"></div></div>
+            <div><span style="font-size:8.5pt;color:#666;">เลขที่</span><div style="border-bottom:1px solid #000;margin-top:18px;"></div></div>
+            <div><span style="font-size:8.5pt;color:#666;">วันที่สอบ</span><div style="border-bottom:1px solid #000;margin-top:18px;"></div></div>
+        </div>
+        <p style="font-size:8.5pt;color:#555;margin-bottom:10px;border-left:3px solid #10b981;padding-left:8px;line-height:1.5;">
+            📌 คำแนะนำ: ใช้ดินสอ 2B ฝนวงกลม ◯ ให้ทึบเต็มวง ถ้าต้องการลบให้ลบให้สะอาด ห้ามพับหรือทำเปื้อนกระดาษ
+        </p>
+        <table style="width:100%;border-collapse:collapse;"><tr>${colsHTML}</tr></table>
+        <div style="margin-top:14px;padding-top:8px;border-top:1px solid #ddd;display:flex;justify-content:space-between;font-size:8pt;color:#aaa;">
+            <span>ระบบ Teacher Buddy &nbsp;•&nbsp; ${today}</span>
+            <span>ลายเซ็นผู้สอบ ________________________________</span>
+        </div>
+    </div>`;
+}
+
+function printAnswerSheet() {
+    const config = getPrintConfig();
+    const copies = config.numCopies;
+    const overlay = document.getElementById('answer-sheet-print-overlay');
+
+    let pagesHTML = '';
+    for (let i = 0; i < copies; i++) {
+        pagesHTML += `<div class="sheet-page">${generateAnswerSheetBody(config)}</div>`;
+    }
+    overlay.innerHTML = pagesHTML;
+    overlay.style.display = 'block';
+    window.print();
+    setTimeout(() => { overlay.style.display = 'none'; }, 600);
+    showToast(`🖨️ กำลังพิมพ์ ${copies} ชุด`);
+}
+
+async function downloadAnswerSheetPDF() {
+    showToast('📥 กำลังสร้าง PDF...', '⏳');
+    const config = getPrintConfig();
+    const course = config.course;
+    const filename = `กระดาษคำตอบ_${course ? course.name : 'OMR'}_${config.numQ}ข้อ.pdf`;
+
+    const tempEl = document.createElement('div');
+    tempEl.style.cssText = 'position:fixed;left:-9999px;top:0;background:white;width:794px;padding:30px;font-family:Sarabun,sans-serif;';
+    for (let i = 0; i < config.numCopies; i++) {
+        const page = document.createElement('div');
+        page.style.cssText = 'page-break-after:always;padding:10px 0;';
+        page.innerHTML = generateAnswerSheetBody(config);
+        tempEl.appendChild(page);
+    }
+    document.body.appendChild(tempEl);
+    try {
+        await html2pdf().set({
+            margin: [12, 10],
+            filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(tempEl).save();
+        showToast('✅ ดาวน์โหลด PDF สำเร็จ!', '📥');
+    } catch(e) {
+        showToast('❌ สร้าง PDF ล้มเหลว', '❌'); console.error(e);
+    } finally {
+        document.body.removeChild(tempEl);
+    }
+}
+
+/* ────────────── ANSWER KEY ────────────── */
+function renderOMRKeyGrid() {
+    const target   = document.getElementById('omr-key-grid-target');
+    const courseId = document.getElementById('omr-key-course-select')?.value;
+    const numQ     = parseInt(document.getElementById('omr-key-num-questions')?.value) || 15;
+    const numC     = parseInt(document.getElementById('omr-key-num-choices')?.value)   || 4;
+    const CHOICES  = ['ก','ข','ค','ง','จ'].slice(0, numC);
+    if (!target || !courseId) return;
+
+    // Save config
+    if (!state.omrConfig) state.omrConfig = {};
+    state.omrConfig[courseId] = { numQuestions: numQ, numChoices: numC };
+
+    const activeKeys = state.omrKeys[courseId] || [];
+    const filledCount = activeKeys.filter(Boolean).length;
+    const countEl = document.getElementById('omr-key-filled-count');
+    if (countEl) countEl.textContent = `ตั้งเฉลยแล้ว ${filledCount} / ${numQ} ข้อ`;
+
+    target.innerHTML = '';
+    for (let i = 0; i < numQ; i++) {
+        const currentAns = activeKeys[i] || null;
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center py-2 px-1';
+
+        const choicesHtml = CHOICES.map(ch => {
+            const isSel = ch === currentAns;
+            return `<button onclick="setOMRKeyAnswer('${courseId}',${i},'${ch}')"
+                class="w-9 h-9 rounded-full border-2 text-xs font-black flex items-center justify-center transition-all
+                ${isSel ? 'bg-brand-emerald border-brand-emerald text-white shadow-md scale-105' : 'border-slate-200 hover:bg-slate-100 text-slate-500 bg-white'}">${ch}</button>`;
+        }).join('');
+
+        const isSet = !!currentAns;
+        row.innerHTML = `
+            <span class="text-xs font-extrabold ${isSet ? 'text-slate-700' : 'text-slate-300'} w-12">ข้อ ${i+1}</span>
+            <div class="flex gap-2">${choicesHtml}</div>
+            <span class="text-[10px] w-6 text-center font-bold ${isSet ? 'text-brand-emerald' : 'text-slate-200'}">${currentAns || '?'}</span>
+        `;
+        target.appendChild(row);
+    }
+}
+
+function setOMRKeyAnswer(courseId, index, choice) {
+    if (!state.omrKeys[courseId]) state.omrKeys[courseId] = [];
+    state.omrKeys[courseId][index] = choice;
+    renderOMRKeyGrid();
+    persistState();
+}
+
+async function saveOMRAnswerKey() {
+    const courseId = document.getElementById('omr-key-course-select')?.value;
+    if (!courseId) return;
+    const numQ  = parseInt(document.getElementById('omr-key-num-questions')?.value) || 15;
+    const numC  = parseInt(document.getElementById('omr-key-num-choices')?.value)   || 4;
+    if (!state.omrConfig) state.omrConfig = {};
+    state.omrConfig[courseId] = { numQuestions: numQ, numChoices: numC };
+    persistState();
+    showToast('✅ บันทึกเฉลยในเครื่องแล้ว');
+
+    if (!GAS_URL) return;
+    try {
+        await gasPost({ action: 'saveOMRKey', data: { courseId, keys: state.omrKeys[courseId] || [], numQuestions: numQ, numChoices: numC } });
+        showToast('☁️ บันทึกเฉลยสู่ Cloud สำเร็จ!', '🟢');
+    } catch(e) { console.warn('Cloud save OMR key failed', e); }
+}
+
+/* ────────────── SCAN – Camera ────────────── */
+async function openOMRCamera() {
+    try {
+        omrCameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        const video = document.getElementById('omr-camera-video');
+        video.srcObject = omrCameraStream;
+        await video.play();
+        document.getElementById('scan-choose-method').classList.add('hidden');
+        document.getElementById('scan-camera-view').classList.remove('hidden');
+        document.getElementById('scan-image-preview').classList.add('hidden');
+    } catch(err) {
+        showToast(`⚠️ ไม่สามารถเปิดกล้องได้: ${err.message}`, '⚠️');
+    }
+}
+
+function captureOMRPhoto() {
+    const video  = document.getElementById('omr-camera-video');
+    const canvas = document.createElement('canvas');
+    // ลดขนาดเพื่อไม่ให้ payload ใหญ่เกินไป
+    const MAX_W = 1400;
+    const scale = Math.min(1, MAX_W / video.videoWidth);
+    canvas.width  = video.videoWidth  * scale;
+    canvas.height = video.videoHeight * scale;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    capturedImageData = canvas.toDataURL('image/jpeg', 0.88);
+    stopOMRCamera();
+    showCapturedOMRImage(capturedImageData);
+}
+
+function stopOMRCamera() {
+    if (omrCameraStream) { omrCameraStream.getTracks().forEach(t => t.stop()); omrCameraStream = null; }
+    document.getElementById('scan-camera-view').classList.add('hidden');
+    document.getElementById('scan-choose-method').classList.remove('hidden');
+}
+
+function handleOMRFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        capturedImageData = e.target.result;
+        showCapturedOMRImage(capturedImageData);
+    };
+    reader.readAsDataURL(file);
+    event.target.value = ''; // reset input
+}
+
+function showCapturedOMRImage(imageData) {
+    document.getElementById('scan-preview-img').src = imageData;
+    document.getElementById('scan-choose-method').classList.add('hidden');
+    document.getElementById('scan-camera-view').classList.add('hidden');
+    document.getElementById('scan-image-preview').classList.remove('hidden');
+    document.getElementById('scan-result-area').classList.add('hidden');
+}
+
+function resetScanCapture() {
+    capturedImageData = '';
+    document.getElementById('scan-image-preview').classList.add('hidden');
+    document.getElementById('scan-result-area').classList.add('hidden');
+    document.getElementById('scan-choose-method').classList.remove('hidden');
+}
+
+function resetScanAll() {
+    currentScanResult = null;
+    capturedImageData = '';
+    document.getElementById('scan-result-area').classList.add('hidden');
+    document.getElementById('scan-progress').classList.add('hidden');
+    document.getElementById('scan-image-preview').classList.add('hidden');
+    document.getElementById('scan-choose-method').classList.remove('hidden');
+}
+
+/* ────────────── SCAN – AI Analysis ────────────── */
+async function startOMRScan() {
+    if (!capturedImageData) { showToast('⚠️ กรุณาถ่ายภาพหรืออัปโหลดรูปก่อน', '⚠️'); return; }
+    const courseId = document.getElementById('scan-course-select')?.value;
+    if (!courseId) { showToast('⚠️ กรุณาเลือกวิชาก่อน', '⚠️'); return; }
+    if (!GAS_URL)  { showToast('⚠️ กรุณาตั้งค่า GAS URL ก่อน (⚙️ ตั้งค่า)', '⚠️'); return; }
+
+    const cfg         = state.omrConfig?.[courseId] || { numQuestions: 15, numChoices: 4 };
+    const answerKey   = state.omrKeys[courseId] || [];
+    const filledKeys  = answerKey.filter(Boolean);
+
+    if (filledKeys.length < cfg.numQuestions) {
+        const go = confirm(`เฉลยยังไม่ครบ (ตั้งแล้ว ${filledKeys.length}/${cfg.numQuestions} ข้อ)\nต้องการสแกนต่อไปไหม? (ข้อที่ไม่มีเฉลยจะนับว่าผิดอัตโนมัติ)`);
+        if (!go) return;
+    }
+
+    // Show progress, hide others
+    document.getElementById('scan-image-preview').classList.add('hidden');
+    document.getElementById('scan-progress').classList.remove('hidden');
+    document.getElementById('scan-result-area').classList.add('hidden');
+
+    const steps = ['กำลังส่งภาพไปยัง Server...', 'Claude Vision กำลังอ่านกระดาษ...', 'กำลังตรวจคำตอบและคำนวณคะแนน...'];
+    let stepIdx = 0;
+    const progressEl = document.getElementById('scan-progress-text');
+    const stepTimer = setInterval(() => {
+        stepIdx = (stepIdx + 1) % steps.length;
+        if (progressEl) progressEl.textContent = steps[stepIdx];
+    }, 2200);
+
+    try {
+        const result = await gasPost({
+            action: 'analyzeOMRSheet',
+            data: {
+                imageBase64:   capturedImageData,
+                answerKey:     answerKey,
+                numQuestions:  cfg.numQuestions,
+                numChoices:    cfg.numChoices,
+                courseId:      courseId
+            }
+        });
+
+        clearInterval(stepTimer);
+        document.getElementById('scan-progress').classList.add('hidden');
+
+        if (!result.success) {
+            showToast(`❌ สแกนล้มเหลว: ${result.error || 'ไม่ทราบสาเหตุ'}`, '❌');
+            document.getElementById('scan-image-preview').classList.remove('hidden');
+            return;
+        }
+
+        currentScanResult = { ...result, courseId };
+        displayOMRScanResult(result, courseId);
+
+    } catch(err) {
+        clearInterval(stepTimer);
+        document.getElementById('scan-progress').classList.add('hidden');
+        document.getElementById('scan-image-preview').classList.remove('hidden');
+        showToast(`❌ เชื่อมต่อ Server ล้มเหลว: ${err.message}`, '❌');
+    }
+}
+
+function displayOMRScanResult(result, courseId) {
+    const { score, totalQuestions, studentName, studentClass, comparison } = result;
+    const pct = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+    const correctCount = comparison.filter(r => r.isCorrect).length;
+    const wrongCount   = comparison.filter(r => !r.isCorrect).length;
+
+    // Score banner
+    const banner = document.getElementById('scan-score-banner');
+    if (pct >= 80)      { banner.className = 'rounded-2xl p-5 text-center shadow-md bg-emerald-500 text-white'; }
+    else if (pct >= 60) { banner.className = 'rounded-2xl p-5 text-center shadow-md bg-amber-400 text-white'; }
+    else                { banner.className = 'rounded-2xl p-5 text-center shadow-md bg-red-500 text-white'; }
+
+    document.getElementById('scan-score-display').textContent = `${score} / ${totalQuestions}`;
+    document.getElementById('scan-score-sub').textContent      = `${pct}% (${pct >= 80 ? 'ดีเยี่ยม 🌟' : pct >= 70 ? 'ดีมาก 👍' : pct >= 60 ? 'พอใช้' : pct >= 50 ? 'ต้องพัฒนา' : 'ไม่ผ่าน ❌'})`;
+
+    document.getElementById('scan-detected-name').textContent  = studentName  || '(อ่านไม่ได้)';
+    document.getElementById('scan-detected-class').textContent = studentClass || '(อ่านไม่ได้)';
+
+    document.getElementById('scan-correct-count').textContent = `✅ ถูก ${correctCount} ข้อ`;
+    document.getElementById('scan-wrong-count').textContent   = `❌ ผิด ${wrongCount} ข้อ`;
+
+    // Answer table
+    const tbody = document.getElementById('scan-answer-tbody');
+    tbody.innerHTML = comparison.map(r => {
+        const bg   = r.isCorrect ? 'bg-emerald-50' : (r.studentAnswer ? 'bg-red-50' : 'bg-slate-50');
+        const icon = r.isCorrect ? '<span class="text-brand-emerald font-black">✓</span>'
+                   : (r.studentAnswer ? '<span class="text-red-500 font-black">✗</span>'
+                   :                    '<span class="text-slate-300">–</span>');
+        return `<tr class="${bg}">
+            <td class="p-2 text-center font-bold">${r.question}</td>
+            <td class="p-2 text-center font-black text-brand-emerald">${r.correctAnswer || '-'}</td>
+            <td class="p-2 text-center font-bold ${r.isCorrect ? 'text-brand-emerald' : 'text-red-500'}">${r.studentAnswer || '-'}</td>
+            <td class="p-2 text-center text-base">${icon}</td>
+        </tr>`;
+    }).join('');
+
+    // Match student
+    const matchResult = findBestStudentMatch(studentName, studentClass);
+    currentScanResult._matchedStudent = matchResult.student;
+
+    if (matchResult.student && matchResult.confidence > 0.4) {
+        document.getElementById('scan-matched-student').classList.remove('hidden');
+        document.getElementById('scan-manual-match').classList.add('hidden');
+        document.getElementById('scan-matched-name').textContent = matchResult.student.name;
+        document.getElementById('scan-matched-info').textContent = `เลขที่ ${matchResult.student.no} • ชั้น ${matchResult.student.classroom}`;
+        document.getElementById('scan-match-confidence').textContent = `ความมั่นใจ ${Math.round(matchResult.confidence * 100)}%`;
+    } else {
+        document.getElementById('scan-matched-student').classList.add('hidden');
+        showManualMatch();
+    }
+
+    // Populate student dropdown
+    const studentSel = document.getElementById('scan-student-select');
+    const activeSem  = getActiveSemester();
+    const courseObj  = state.courses.find(c => c.id == courseId);
+    const relevant   = courseObj ? state.students.filter(s => s.classroom === courseObj.classroom).sort((a,b) => a.no - b.no) : state.students.sort((a,b) => a.no - b.no);
+    studentSel.innerHTML = `<option value="">-- เลือกนักเรียน --</option>` +
+        relevant.map(s => `<option value="${s.id}" ${(matchResult.student && matchResult.student.id == s.id) ? 'selected' : ''}>${s.no}. ${s.name} (${s.classroom})</option>`).join('');
+
+    document.getElementById('scan-result-area').classList.remove('hidden');
+    renderScanSavedScores(courseId);
+
+    // Scroll to result
+    document.getElementById('scan-result-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showManualMatch() {
+    document.getElementById('scan-matched-student').classList.add('hidden');
+    document.getElementById('scan-manual-match').classList.remove('hidden');
+}
+
+/* ────────────── SCAN – Save ────────────── */
+async function confirmSaveOMRScore() {
+    if (!currentScanResult) return;
+    const courseId = currentScanResult.courseId;
+
+    // หา studentId: จาก auto-match หรือ manual select
+    let studentId = null;
+    const manualSel = document.getElementById('scan-manual-match');
+    const matchedDiv = document.getElementById('scan-matched-student');
+
+    if (!matchedDiv.classList.contains('hidden') && currentScanResult._matchedStudent) {
+        studentId = currentScanResult._matchedStudent.id;
+    } else {
+        studentId = document.getElementById('scan-student-select')?.value;
+    }
+
+    if (!studentId) { showToast('⚠️ กรุณาระบุชื่อนักเรียนก่อนบันทึก', '⚠️'); return; }
+
+    const scoreKey = `${studentId}-${courseId}`;
+    state.omrScanResults[scoreKey] = currentScanResult.score;
+    persistState();
+    showToast(`✅ บันทึกคะแนน ${currentScanResult.score}/${currentScanResult.totalQuestions} แล้ว`, '🟢');
+    renderScanSavedScores(courseId);
+    resetScanAll();
+
+    if (!GAS_URL) return;
+    try {
+        await gasPost({
+            action: 'saveOMRScore',
+            data: {
+                studentId,
+                courseId,
+                score:          currentScanResult.score,
+                totalQuestions: currentScanResult.totalQuestions,
+                answers:        currentScanResult.answers,
+                comparison:     currentScanResult.comparison
+            }
+        });
+        showToast('☁️ บันทึกคะแนนสู่ Cloud สำเร็จ!', '🟢');
+    } catch(e) { console.warn('Cloud save score failed', e); }
+}
+
+function renderScanSavedScores(courseId) {
+    const container = document.getElementById('scan-saved-scores-list');
+    if (!container) return;
+    const entries = Object.entries(state.omrScanResults).filter(([k]) => k.endsWith('-' + courseId));
+    if (entries.length === 0) {
+        container.innerHTML = '<p class="text-slate-400 text-center py-2">ยังไม่มีคะแนนในวิชานี้</p>';
+        return;
+    }
+    const cfg = state.omrConfig?.[courseId] || { numQuestions: 15 };
+    container.innerHTML = entries.map(([key, score]) => {
+        const stdId = key.split('-')[0];
+        const std   = state.students.find(s => s.id == stdId);
+        const pct   = Math.round((score / cfg.numQuestions) * 100);
+        const color = pct >= 80 ? 'text-brand-emerald' : pct >= 50 ? 'text-amber-500' : 'text-red-500';
+        return `<div class="flex justify-between items-center bg-slate-50 rounded-xl px-3 py-2">
+            <div>
+                <p class="font-bold text-slate-700 text-xs">${std ? std.name : '(ไม่ทราบชื่อ)'}</p>
+                <p class="text-[10px] text-slate-400">${std ? `เลขที่ ${std.no} • ${std.classroom}` : ''}</p>
+            </div>
+            <div class="text-right">
+                <p class="font-black ${color}">${score}/${cfg.numQuestions}</p>
+                <p class="text-[10px] text-slate-400">${pct}%</p>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+/* ────────────── SCAN COURSE CHANGED ────────────── */
+function onScanCourseChanged() {
+    const courseId = document.getElementById('scan-course-select')?.value;
+    if (!courseId) return;
+    const keys    = state.omrKeys[courseId] || [];
+    const cfg     = state.omrConfig?.[courseId] || { numQuestions: 15, numChoices: 4 };
+    const filled  = keys.filter(Boolean).length;
+    const statusEl = document.getElementById('scan-key-status');
+    if (statusEl) {
+        if (filled >= cfg.numQuestions) {
+            statusEl.className = 'text-xs px-4 py-2.5 rounded-xl font-bold text-center bg-emerald-50 text-emerald-700 border border-emerald-200';
+            statusEl.textContent = `✅ เฉลยพร้อมแล้ว ${filled} ข้อ — พร้อมสแกน!`;
+        } else if (filled > 0) {
+            statusEl.className = 'text-xs px-4 py-2.5 rounded-xl font-bold text-center bg-amber-50 text-amber-700 border border-amber-200';
+            statusEl.textContent = `⚠️ เฉลยยังไม่ครบ (${filled}/${cfg.numQuestions} ข้อ) — ไปที่แท็บ "ตั้งเฉลย" ก่อน`;
+        } else {
+            statusEl.className = 'text-xs px-4 py-2.5 rounded-xl font-bold text-center bg-red-50 text-red-700 border border-red-200';
+            statusEl.textContent = '❌ ยังไม่มีเฉลย — กรุณาไปที่แท็บ "ตั้งเฉลย" ก่อนสแกน';
+        }
+    }
+    renderScanSavedScores(courseId);
+}
+
+/* ────────────── FUZZY NAME MATCHING ────────────── */
+function findBestStudentMatch(detectedName, detectedClass) {
+    const norm = s => (s || '').replace(/\s+/g, ' ').trim();
+    const normName  = norm(detectedName);
+    const normClass = norm(detectedClass);
+
+    let best = null;
+    let bestScore = 0;
+
+    state.students.forEach(s => {
+        const sName  = norm(s.name);
+        const sClass = norm(s.classroom);
+
+        // Class score
+        let classScore = 0;
+        if (normClass && sClass) {
+            if (sClass === normClass) classScore = 1;
+            else {
+                const nums1 = sClass.replace(/[^\d\/]/g, '');
+                const nums2 = normClass.replace(/[^\d\/]/g, '');
+                if (nums1 && nums2 && nums1 === nums2) classScore = 0.85;
+                else if (sClass.includes(normClass) || normClass.includes(sClass)) classScore = 0.6;
+            }
+        }
+
+        // Name score
+        let nameScore = 0;
+        if (normName && sName) {
+            if (sName === normName) { nameScore = 1; }
+            else {
+                // Word-level matching
+                const ws1 = normName.split(' ').filter(w => w.length > 1);
+                const ws2 = sName.split(' ').filter(w => w.length > 1);
+                const hits = ws1.filter(w => ws2.some(sw => sw.includes(w) || w.includes(sw)));
+                nameScore = hits.length / Math.max(ws1.length, ws2.length, 1);
+                // Character overlap backup
+                if (nameScore < 0.25) {
+                    const ch1 = new Set([...normName].filter(c => c !== ' '));
+                    const ch2 = new Set([...sName].filter(c => c !== ' '));
+                    const inter = [...ch1].filter(c => ch2.has(c)).length;
+                    nameScore = Math.max(nameScore, inter / Math.max(ch1.size, ch2.size) * 0.6);
+                }
+            }
+        }
+
+        const total = (classScore * 0.35) + (nameScore * 0.65);
+        if (total > bestScore && total > 0.25) { bestScore = total; best = s; }
+    });
+
+    return { student: best, confidence: bestScore };
+}
+
+// ────────────── OLD COMPAT aliases ──────────────
+// (เรียกจาก report section)
+function populateOMRSelects() { populateOMRCourseSelects(); }
+
+// ==========================================================
+// 11. REPORTS ปพ.5
+// ==========================================================
+function populateReportCoursesSelect() {
+    const select = document.getElementById('report-select-course');
+    if (!select) return;
+    const activeSem = getActiveSemester();
+    const filtered = activeSem ? state.courses.filter(c => c.semesterId == activeSem.id) : state.courses;
+    select.innerHTML = filtered.map(c => `<option value="${c.id}">${c.name} (${c.code}) - ห้อง ${c.classroom}</option>`).join('');
+
+    // Pre-fill school name, affiliation, and semester year from state
+    const schoolInput = document.getElementById('report-input-school');
+    if (schoolInput && !schoolInput.value) schoolInput.value = state.teacher.schoolName || '';
+
+    const yearInput = document.getElementById('report-input-year');
+    if (yearInput && !yearInput.value && activeSem) yearInput.value = `ภาคเรียนที่ ${activeSem.term} ปีการศึกษา ${activeSem.year}`;
+}
+
+function generateReportPreview() {
+    const select = document.getElementById('report-select-course');
+    if (!select || select.options.length === 0) return;
+
+    const courseId = select.value;
+    const schoolName = document.getElementById('report-input-school').value || 'โรงเรียน...';
+    const yearText   = document.getElementById('report-input-year').value   || '';
+    const totalScore = parseInt(document.getElementById('report-total-score').value) || 15;
+    const activeSem  = getActiveSemester();
+    const courseObj  = state.courses.find(c => c.id == courseId);
+
+    if (!courseObj) return;
+
+    document.getElementById('report-header-sub').innerText = `${schoolName} • ${yearText}`;
+    document.getElementById('report-header-subject').innerText = `รายวิชา: ${courseObj.name} (${courseObj.code}) • ห้อง ${courseObj.classroom}`;
+
+    const studentsList = state.students.filter(s => s.classroom === courseObj.classroom).sort((a,b) => a.no - b.no);
+    const tableBody = document.getElementById('report-table-body-target');
+    tableBody.innerHTML = '';
+
+    if (studentsList.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400 py-4 text-xs">ไม่มีข้อมูลนักเรียนในห้องนี้</td></tr>';
+        return;
+    }
+
+    studentsList.forEach(s => {
+        // คำนวณ %เข้าเรียน
+        const attKeys = Object.keys(state.attendance).filter(k => k.startsWith(`${courseId}-`));
+        const totalDates = attKeys.length;
+        const presentDates = attKeys.filter(k => state.attendance[k][s.id] === 'มา').length;
+        const attPct = totalDates > 0 ? Math.round((presentDates / totalDates) * 100) : '-';
+
+        // คะแนนสอบ
+        const scoreKey = `${s.id}-${courseId}`;
+        const examScore = state.omrScanResults[scoreKey];
+        const scoreDisplay = examScore !== undefined ? `${examScore}/${totalScore}` : '-';
+
+        // ผลการเรียน
+        let grade = '-';
+        if (examScore !== undefined) {
+            const pct = (examScore / totalScore) * 100;
+            if (pct >= 80)      grade = '4.0 (ดีเยี่ยม)';
+            else if (pct >= 75) grade = '3.5 (ดีมาก)';
+            else if (pct >= 70) grade = '3.0 (ดี)';
+            else if (pct >= 65) grade = '2.5 (ดีพอใช้)';
+            else if (pct >= 60) grade = '2.0 (พอใช้)';
+            else if (pct >= 55) grade = '1.5 (ผ่านปานกลาง)';
+            else if (pct >= 50) grade = '1.0 (ผ่าน)';
+            else                 grade = '0 (ไม่ผ่าน)';
+        }
+
+        const isFailGrade = grade.startsWith('0');
+        const row = document.createElement('tr');
+        row.className = 'hover:bg-slate-50';
+        row.innerHTML = `
+            <td class="border border-slate-200 p-1 text-center font-bold text-slate-700">${s.no}</td>
+            <td class="border border-slate-200 p-1 font-bold text-slate-800">${s.name}</td>
+            <td class="border border-slate-200 p-1 text-center font-bold text-emerald-600">${attPct}%</td>
+            <td class="border border-slate-200 p-1 text-center font-bold text-brand-sky">${scoreDisplay}</td>
+            <td class="border border-slate-200 p-1 text-center font-black ${isFailGrade ? 'text-red-500' : 'text-brand-emerald'}">${grade}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+// --- พิมพ์ ปพ.5 ผ่าน @media print ---
+function printPP5() {
+    const printDoc = document.getElementById('pp5-print-document');
+    printDoc.innerHTML = buildPP5FullHTML();
+    document.getElementById('print-modal-overlay').style.display = 'block';
+    window.print();
+    setTimeout(() => {
+        document.getElementById('print-modal-overlay').style.display = 'none';
+    }, 500);
+}
+
+// --- ดาวน์โหลด PDF ด้วย html2pdf.js ---
+async function downloadPP5AsPDF() {
+    showToast('📥 กำลังสร้างไฟล์ PDF...', '⏳');
+
+    const courseSelect = document.getElementById('report-select-course');
+    if (!courseSelect || courseSelect.options.length === 0) {
+        showToast('⚠️ กรุณาเลือกวิชาก่อน', '⚠️'); return;
+    }
+
+    const courseObj = state.courses.find(c => c.id == courseSelect.value);
+    const filename = `ปพ5_${courseObj ? courseObj.name : 'รายงาน'}_${new Date().toLocaleDateString('th-TH')}.pdf`;
+
+    // สร้าง element ชั่วคราวสำหรับ pdf
+    const tempEl = document.createElement('div');
+    tempEl.style.cssText = 'position:fixed;left:-9999px;top:0;background:white;width:794px;padding:40px;font-family:Sarabun,sans-serif;font-size:13px;';
+    tempEl.innerHTML = buildPP5FullHTML();
+    document.body.appendChild(tempEl);
+
+    try {
+        await html2pdf().set({
+            margin: [15, 10, 15, 10],
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        }).from(tempEl).save();
+        showToast(`✅ ดาวน์โหลด PDF สำเร็จ!`, '📥');
+    } catch(e) {
+        showToast('❌ เกิดข้อผิดพลาดในการสร้าง PDF', '❌');
+        console.error(e);
+    } finally {
+        document.body.removeChild(tempEl);
+    }
+}
+
+// --- สร้าง HTML ฉบับสมบูรณ์สำหรับ print/PDF ---
+function buildPP5FullHTML() {
+    const courseSelect = document.getElementById('report-select-course');
+    const courseId = courseSelect ? courseSelect.value : '';
+    const schoolName = document.getElementById('report-input-school').value || '';
+    const yearText   = document.getElementById('report-input-year').value || '';
+    const totalScore = parseInt(document.getElementById('report-total-score').value) || 15;
+    const courseObj  = state.courses.find(c => c.id == courseId);
+
+    if (!courseObj) return '<p>ไม่พบข้อมูลวิชา</p>';
+
+    const studentsList = state.students.filter(s => s.classroom === courseObj.classroom).sort((a,b) => a.no - b.no);
+
+    let rowsHTML = '';
+    studentsList.forEach((s, idx) => {
+        const attKeys = Object.keys(state.attendance).filter(k => k.startsWith(`${courseId}-`));
+        const totalDates = attKeys.length;
+        const presentDates = attKeys.filter(k => state.attendance[k][s.id] === 'มา').length;
+        const attPct = totalDates > 0 ? `${Math.round((presentDates / totalDates) * 100)}%` : '-';
+
+        const examScore = state.omrScanResults[`${s.id}-${courseId}`];
+        const scoreDisplay = examScore !== undefined ? `${examScore}` : '-';
+
+        let grade = '-';
+        if (examScore !== undefined) {
+            const pct = (examScore / totalScore) * 100;
+            if (pct >= 80)      grade = '4.0';
+            else if (pct >= 75) grade = '3.5';
+            else if (pct >= 70) grade = '3.0';
+            else if (pct >= 65) grade = '2.5';
+            else if (pct >= 60) grade = '2.0';
+            else if (pct >= 55) grade = '1.5';
+            else if (pct >= 50) grade = '1.0';
+            else                 grade = '0';
+        }
+
+        const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+        rowsHTML += `
+            <tr style="background:${rowBg};">
+                <td style="border:1px solid #ccc;padding:6px 8px;text-align:center;font-weight:bold;">${s.no}</td>
+                <td style="border:1px solid #ccc;padding:6px 8px;font-weight:600;">${s.name}</td>
+                <td style="border:1px solid #ccc;padding:6px 8px;text-align:center;">${attPct}</td>
+                <td style="border:1px solid #ccc;padding:6px 8px;text-align:center;">${scoreDisplay}</td>
+                <td style="border:1px solid #ccc;padding:6px 8px;text-align:center;font-weight:bold;color:${grade === '0' ? '#dc2626' : '#059669'};">${grade}</td>
+            </tr>
+        `;
+    });
+
+    const today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const teacherName = `${state.teacher.firstName} ${state.teacher.lastName}`.trim() || '...';
+    const affiliation = state.teacher.affiliation || '';
+
+    return `
+        <div style="font-family:'Sarabun',sans-serif;color:#000;">
+            <div class="print-header" style="text-align:center;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:16px;">
+                <p style="font-size:11pt;margin-bottom:4px;">กระทรวงศึกษาธิการ</p>
+                <h2 style="font-size:14pt;font-weight:900;letter-spacing:1px;margin:4px 0;">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</h2>
+                <h3 style="font-size:13pt;font-weight:900;margin:4px 0;">(ปพ.5)</h3>
+                <p style="font-size:10pt;margin-top:6px;">สถานศึกษา: <strong>${schoolName}</strong></p>
+                ${affiliation ? `<p style="font-size:10pt;">สังกัด: <strong>${affiliation}</strong></p>` : ''}
+                <p style="font-size:10pt;">${yearText}</p>
+                <p style="font-size:10pt;">รายวิชา: <strong>${courseObj.name} (${courseObj.code})</strong> &nbsp; จำนวน <strong>${courseObj.credits}</strong> หน่วยกิต &nbsp; ห้อง <strong>${courseObj.classroom}</strong></p>
+                <p style="font-size:10pt;">คะแนนเต็ม: <strong>${totalScore}</strong> คะแนน</p>
+            </div>
+
+            <table style="width:100%;border-collapse:collapse;font-size:10pt;">
+                <thead>
+                    <tr style="background:#e2e8f0;">
+                        <th style="border:1px solid #999;padding:8px;text-align:center;width:50px;">เลขที่</th>
+                        <th style="border:1px solid #999;padding:8px;text-align:left;">ชื่อ - นามสกุล</th>
+                        <th style="border:1px solid #999;padding:8px;text-align:center;width:90px;">การเข้าเรียน</th>
+                        <th style="border:1px solid #999;padding:8px;text-align:center;width:90px;">คะแนน (/${totalScore})</th>
+                        <th style="border:1px solid #999;padding:8px;text-align:center;width:90px;">ผลการเรียน</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHTML}</tbody>
+            </table>
+
+            <div class="print-footer" style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px;">
+                <div>
+                    <p style="font-size:10pt;margin-bottom:50px;">ลงชื่อครูผู้สอน</p>
+                    <div class="signature-line" style="border-top:1px solid #333;padding-top:6px;text-align:center;">
+                        <p>( ${teacherName} )</p>
+                        <p>ตำแหน่ง .................................</p>
+                        <p>วันที่ ${today}</p>
+                    </div>
+                </div>
+                <div>
+                    <p style="font-size:10pt;margin-bottom:50px;">ลงชื่อหัวหน้ากลุ่มสาระการเรียนรู้</p>
+                    <div class="signature-line" style="border-top:1px solid #333;padding-top:6px;text-align:center;">
+                        <p>( ................................. )</p>
+                        <p>ตำแหน่ง .................................</p>
+                        <p>วันที่ .................................</p>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:20px;font-size:9pt;color:#666;border-top:1px solid #eee;padding-top:8px;">
+                <p>📌 หมายเหตุ: เอกสารนี้สร้างจากระบบ Teacher Buddy • พิมพ์เมื่อ ${today}</p>
+                <p>เกณฑ์ผลการเรียน: ≥80%=4.0, ≥75%=3.5, ≥70%=3.0, ≥65%=2.5, ≥60%=2.0, ≥55%=1.5, ≥50%=1.0, <50%=0</p>
+            </div>
+        </div>
+    `;
+}
+
+// --- ส่งออก CSV ---
+function exportToCSV() {
+    const courseSelect = document.getElementById('report-select-course');
+    if (!courseSelect || courseSelect.options.length === 0) return;
+
+    const courseId = courseSelect.value;
+    const courseObj = state.courses.find(c => c.id == courseId);
+    if (!courseObj) return;
+
+    const totalScore = parseInt(document.getElementById('report-total-score').value) || 15;
+    const studentsList = state.students.filter(s => s.classroom === courseObj.classroom).sort((a,b) => a.no - b.no);
+
+    const rows = [['เลขที่', 'ชื่อ-นามสกุล', 'ห้อง', 'การเข้าเรียน(%)', 'คะแนนสอบ', 'คะแนนเต็ม', 'ผลการเรียน']];
+
+    studentsList.forEach(s => {
+        const attKeys = Object.keys(state.attendance).filter(k => k.startsWith(`${courseId}-`));
+        const totalDates = attKeys.length;
+        const presentDates = attKeys.filter(k => state.attendance[k][s.id] === 'มา').length;
+        const attPct = totalDates > 0 ? Math.round((presentDates / totalDates) * 100) : '';
+
+        const examScore = state.omrScanResults[`${s.id}-${courseId}`];
+        let grade = '';
+        if (examScore !== undefined) {
+            const pct = (examScore / totalScore) * 100;
+            grade = pct >= 80 ? '4.0' : pct >= 75 ? '3.5' : pct >= 70 ? '3.0' : pct >= 65 ? '2.5' : pct >= 60 ? '2.0' : pct >= 55 ? '1.5' : pct >= 50 ? '1.0' : '0';
+        }
+
+        rows.push([s.no, s.name, s.classroom, attPct, examScore ?? '', totalScore, grade]);
+    });
+
+    const csvContent = '\uFEFF' + rows.map(r => r.join(',')).join('\n'); // UTF-8 BOM สำหรับ Excel ภาษาไทย
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ปพ5_${courseObj.name}_${new Date().toLocaleDateString('th-TH')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('📊 ดาวน์โหลด CSV สำเร็จ!', '📥');
+}
+
+// ==========================================================
+// 12. SETTINGS & PROFILE
+// ==========================================================
+function loadProfileIntoFields() {
+    // --- LINE Profile Card ---
+    const lp = state.lineProfile || {};
+    const lineNameEl   = document.getElementById('settings-line-name');
+    const lineUidEl    = document.getElementById('settings-line-uid');
+    const lineAvatarEl = document.getElementById('settings-line-avatar');
+    const lineAvatarFb = document.getElementById('settings-line-avatar-fallback');
+
+    if (lineNameEl) lineNameEl.textContent = lp.displayName || 'ไม่ทราบชื่อ';
+    if (lineUidEl)  lineUidEl.textContent  = `uid: ${lp.userId || currentUserId || '-'}`;
+
+    if (lineAvatarEl && lp.pictureUrl) {
+        lineAvatarEl.src = lp.pictureUrl;
+        lineAvatarEl.classList.remove('hidden');
+        if (lineAvatarFb) lineAvatarFb.classList.add('hidden');
+    } else {
+        if (lineAvatarEl) lineAvatarEl.classList.add('hidden');
+        if (lineAvatarFb) lineAvatarFb.classList.remove('hidden');
+    }
+
+    // --- Profile Inputs ---
+    document.getElementById('profile-first-name').value   = state.teacher.firstName   || '';
+    document.getElementById('profile-last-name').value    = state.teacher.lastName    || '';
+    document.getElementById('profile-school-name').value  = state.teacher.schoolName  || '';
+    document.getElementById('profile-affiliation').value  = state.teacher.affiliation || '';
+
+    // --- Config inputs ---
+    const gasEl  = document.getElementById('settings-gas-url');
+    const liffEl = document.getElementById('settings-liff-id');
+    if (gasEl)  gasEl.value  = GAS_URL  || '';
+    if (liffEl) liffEl.value = LIFF_ID  || '';
+}
+
+async function saveProfileSettings() {
+    const first       = document.getElementById('profile-first-name').value.trim();
+    const last        = document.getElementById('profile-last-name').value.trim();
+    const school      = document.getElementById('profile-school-name').value.trim();
+    const affiliation = document.getElementById('profile-affiliation').value.trim();
+    if (!first || !last) { alert('กรุณากรอกชื่อและนามสกุล'); return; }
+
+    state.teacher = { firstName: first, lastName: last, schoolName: school, affiliation };
+    updateAllUISignals();
+    persistState();
+    showToast('👤 บันทึกข้อมูลส่วนตัวสำเร็จ');
+
+    if (!GAS_URL) return;
+    try {
+        await gasPost({ action: 'saveUser', data: { userId: currentUserId, firstName: first, lastName: last, schoolName: school, affiliation } });
+        showToast('☁️ ซิงค์โปรไฟล์สู่ Cloud แล้ว', '🟢');
+    } catch(e) { console.warn('Cloud save user failed', e); }
+}
+
+function saveGASUrl() {
+    const url = document.getElementById('settings-gas-url').value.trim();
+    GAS_URL = url;
+    localStorage.setItem('teacher_buddy_gas_url', url);
+    showToast('⚙️ บันทึก GAS URL สำเร็จ!', '✅');
+}
+
+function saveLiffId() {
+    const id = document.getElementById('settings-liff-id').value.trim();
+    if (!id) { alert('กรุณากรอก LIFF ID'); return; }
+    LIFF_ID = id;
+    localStorage.setItem('teacher_buddy_liff_id', id);
+    showToast('🟢 บันทึก LIFF ID แล้ว กำลัง Reload...', '✅');
+    setTimeout(() => window.location.reload(), 1200);
+}
+
+function clearLocalData() {
+    if (!confirm('ยืนยันลบข้อมูลทั้งหมดในเครื่อง? (ข้อมูลใน Cloud ยังคงอยู่)')) return;
+    localStorage.removeItem('teacher_buddy_state_v3_' + currentUserId);
+    state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    updateAllUISignals();
+    showToast('🗑️ ล้างข้อมูล Local เสร็จสิ้น');
+}
+
+// ==========================================================
+// 13. CLOUD SYNC (Manual)
+// ==========================================================
+async function syncToCloud() {
+    if (!GAS_URL) {
+        showToast('⚠️ กรุณาตั้งค่า GAS URL ก่อน (ไปที่ ⚙️ ตั้งค่า)', '⚠️');
+        return;
+    }
+    showToast('⏳ กำลังซิงค์ข้อมูลทั้งหมด...', '☁️');
+    setSyncStatus('⏳ กำลังซิงค์...');
+
+    try {
+        // Push local state ทั้งก้อนขึ้น cloud
+        await gasPost({ action: 'saveFullState', state: state });
+        // Pull cloud state กลับมา
+        await fetchStateFromCloud();
+        updateAllUISignals();
+        showToast('✅ ซิงค์ข้อมูลทั้งหมดสำเร็จ!', '🟢');
+    } catch(e) {
+        showToast('❌ ซิงค์ล้มเหลว: ' + e.message, '❌');
+        setSyncStatus('📴 Offline');
+    }
+}
+
+// ==========================================================
+// 14. GENERAL UI HELPERS
+// ==========================================================
+function updateAllUISignals() {
+    // --- Header: ชื่อครู ---
+    const lp = state.lineProfile || {};
+    // ใช้ชื่อที่ครูกรอกเองก่อน ถ้าไม่มีใช้ LINE displayName
+    const teacherFullName = (`${state.teacher.firstName} ${state.teacher.lastName}`).trim()
+        || lp.displayName
+        || 'ครู';
+    document.getElementById('header-teacher-name').innerText = teacherFullName;
+
+    // --- Header Avatar: รูป LINE ---
+    const avatarImg      = document.getElementById('user-avatar-img');
+    const avatarInitials = document.getElementById('user-avatar-initials');
+    const avatarText     = document.getElementById('user-avatar-text');
+
+    if (lp.pictureUrl) {
+        avatarImg.src = lp.pictureUrl;
+        avatarImg.classList.remove('hidden');
+        avatarInitials.classList.add('hidden');
+    } else {
+        avatarImg.classList.add('hidden');
+        avatarInitials.classList.remove('hidden');
+        const initials = state.teacher.firstName
+            ? state.teacher.firstName.charAt(0)
+            : (lp.displayName ? lp.displayName.charAt(0) : '?');
+        avatarText.innerText = initials;
+    }
+
+    // --- Active Semester text ---
+    const activeSem = getActiveSemester();
+    document.getElementById('active-semester-text').innerText = activeSem
+        ? `ภาคเรียนที่ ${activeSem.term} / ${activeSem.year}`
+        : 'ยังไม่มีภาคเรียน';
+
+    // --- Dashboard stats ---
+    const activeSemId = activeSem ? activeSem.id : null;
+    const semCourseCount = activeSemId ? state.courses.filter(c => c.semesterId == activeSemId).length : 0;
+    document.getElementById('dash-courses-count').innerText = `${semCourseCount} วิชา`;
+    document.getElementById('dash-students-count').innerText = `${state.students.length} คน`;
+
+    // --- Onboarding progress ---
+    const totalSteps = 5;
+    let step = 0;
+    if (state.teacher.firstName || lp.displayName) step++;
+    if (state.semesters.length > 0) step++;
+    if (state.courses.length > 0) step++;
+    if (state.students.length > 0) step++;
+    if (Object.keys(state.attendance).length > 0) step++;
+    state.onboardingStep = step;
+
+    document.getElementById('onboarding-progress-text').innerText = `${step} / ${totalSteps}`;
+    document.getElementById('onboarding-progress-bar').style.width = `${(step / totalSteps) * 100}%`;
+
+    const hints = [
+        '💡 ขั้นตอน 1: ไปที่ ⚙️ ตั้งค่า เพื่อกรอกชื่อ-สกุล และชื่อโรงเรียน',
+        '💡 ขั้นตอน 2: ไปที่ 🗓️ ตั้งค่าเทอม เพื่อสร้างภาคเรียนใหม่',
+        '💡 ขั้นตอน 3: ไปที่ 📖 รายวิชา เพื่อเพิ่มวิชาที่สอนในเทอมนี้',
+        '💡 ขั้นตอน 4: ไปที่ 👦👧 นักเรียน เพื่อเพิ่มรายชื่อผู้เรียน',
+        '💡 ขั้นตอน 5: ✏️ เช็คชื่อ แล้วบันทึก → 📄 พิมพ์ ปพ.5 ได้เลย!'
+    ];
+    document.getElementById('onboarding-hint').innerText = hints[Math.min(step, hints.length - 1)];
+
+    persistState();
+}
+
+function getActiveSemester() {
+    return state.semesters.find(s => s.isActive) || state.semesters[0] || null;
+}
+
+function generateLocalId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+// Semester Modal
+function openSemesterModal() {
+    const modal = document.getElementById('semester-modal');
+    const target = document.getElementById('modal-semester-list-target');
+    target.innerHTML = '';
+    modal.classList.remove('hidden');
+
+    state.semesters.forEach(s => {
+        const item = document.createElement('div');
+        item.className = `p-3 border rounded-xl flex justify-between items-center cursor-pointer transition-all ${s.isActive ? 'border-brand-sky bg-blue-50/50' : 'border-slate-100 bg-white hover:bg-slate-50'}`;
+        item.onclick = () => { setActiveSemester(s.id); closeSemesterModal(); };
+        item.innerHTML = `<span class="text-xs font-bold text-slate-800">ภาคเรียนที่ ${s.term} ปีการศึกษา ${s.year}</span>${s.isActive ? '<span class="text-brand-sky text-xs font-extrabold">✓ กำลังใช้</span>' : ''}`;
+        target.appendChild(item);
+    });
+}
+
+function closeSemesterModal() {
+    document.getElementById('semester-modal').classList.add('hidden');
+}
+</script>
+</body>
+</html>
